@@ -3,17 +3,26 @@ import { addStockCounts, getProducts } from '../lib/localStore'
 import { useName } from '../lib/useName'
 import type { Product } from '../lib/types'
 
+type Period = 'weekday' | 'weekend'
+
 interface OrderLine {
   product: Product
   suggested: number
 }
 
+function defaultPeriod(): Period {
+  const day = new Date().getDay() // 0 = zondag
+  return day >= 1 && day <= 4 ? 'weekday' : 'weekend'
+}
+
 export function StockCount() {
   const [products, setProducts] = useState<Product[]>([])
   const [counts, setCounts] = useState<Record<string, string>>({})
+  const [period, setPeriod] = useState<Period>(defaultPeriod)
   const [name, setName] = useName()
   const [error, setError] = useState<string | null>(null)
   const [orderList, setOrderList] = useState<OrderLine[] | null>(null)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     setProducts(getProducts())
@@ -28,6 +37,10 @@ export function StockCount() {
     }
     return [...groups.entries()]
   }, [products])
+
+  function parLevelFor(product: Product) {
+    return period === 'weekday' ? product.par_level_weekday : product.par_level_weekend
+  }
 
   function handleSubmit() {
     setError(null)
@@ -46,7 +59,7 @@ export function StockCount() {
     const lines: OrderLine[] = entries
       .map(([productId, qty]) => {
         const product = products.find((p) => p.id === productId)!
-        const suggested = Math.max(product.par_level - Number(qty), 0)
+        const suggested = Math.max(parLevelFor(product) - Number(qty), 0)
         return { product, suggested }
       })
       .filter((line) => line.suggested > 0)
@@ -55,10 +68,28 @@ export function StockCount() {
     setOrderList(lines)
   }
 
+  function orderListText() {
+    if (!orderList) return ''
+    const label = period === 'weekday' ? 'doordeweeks (ma–do)' : 'weekend (vr–zo)'
+    const lines = orderList.map((l) => `- ${l.product.name}: ${l.suggested} ${l.product.unit}`)
+    return `Bestellijst (${label}):\n${lines.join('\n')}`
+  }
+
   function copyOrderList() {
-    if (!orderList) return
-    const text = orderList.map((l) => `${l.product.name}: ${l.suggested} ${l.product.unit}`).join('\n')
-    navigator.clipboard.writeText(text)
+    navigator.clipboard.writeText(orderListText())
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  function mailOrderList() {
+    const subject = encodeURIComponent('Bestellijst Kreko')
+    const body = encodeURIComponent(orderListText())
+    window.location.href = `mailto:?subject=${subject}&body=${body}`
+  }
+
+  function whatsappOrderList() {
+    const text = encodeURIComponent(orderListText())
+    window.open(`https://wa.me/?text=${text}`, '_blank')
   }
 
   if (orderList) {
@@ -67,7 +98,8 @@ export function StockCount() {
         <h1 className="text-lg font-semibold text-neutral-900">Bestellijst</h1>
         <p className="text-sm text-neutral-500">
           Op basis van de tellingen — dit is wat er bij Kreko besteld moet worden om weer op de
-          streefvoorraad te komen.
+          streefvoorraad te komen. Er is (nog) geen directe koppeling met Kreko's
+          besteltoepassing, dus gebruik onderstaande knoppen om de lijst snel over te nemen.
         </p>
 
         {orderList.length === 0 ? (
@@ -97,13 +129,27 @@ export function StockCount() {
           </div>
         )}
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={copyOrderList}
             className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700"
           >
-            Kopieer lijst
+            {copied ? 'Gekopieerd ✓' : 'Kopieer lijst'}
+          </button>
+          <button
+            type="button"
+            onClick={whatsappOrderList}
+            className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700"
+          >
+            Stuur via WhatsApp
+          </button>
+          <button
+            type="button"
+            onClick={mailOrderList}
+            className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700"
+          >
+            Mail de lijst
           </button>
           <button
             type="button"
@@ -127,6 +173,27 @@ export function StockCount() {
         <p className="mt-1 text-sm text-neutral-500">
           Vul in hoeveel er nu is. De bestellijst wordt automatisch berekend.
         </p>
+      </div>
+
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => setPeriod('weekday')}
+          className={`flex-1 rounded-lg py-2 text-sm font-medium ${
+            period === 'weekday' ? 'bg-neutral-900 text-white' : 'bg-neutral-100 text-neutral-600'
+          }`}
+        >
+          Doordeweeks (ma–do)
+        </button>
+        <button
+          type="button"
+          onClick={() => setPeriod('weekend')}
+          className={`flex-1 rounded-lg py-2 text-sm font-medium ${
+            period === 'weekend' ? 'bg-neutral-900 text-white' : 'bg-neutral-100 text-neutral-600'
+          }`}
+        >
+          Weekend (vr–zo)
+        </button>
       </div>
 
       <input
@@ -154,7 +221,7 @@ export function StockCount() {
                     <div>
                       <p className="text-sm font-medium text-neutral-900">{p.name}</p>
                       <p className="text-xs text-neutral-400">
-                        Streefvoorraad: {p.par_level} {p.unit}
+                        Streefvoorraad: {parLevelFor(p)} {p.unit}
                       </p>
                     </div>
                     <input

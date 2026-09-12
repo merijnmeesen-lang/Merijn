@@ -10,6 +10,11 @@ interface WasteTotal {
   total: number
 }
 
+interface ReasonTotal {
+  reason: string
+  count: number
+}
+
 const PERIODS = [
   { label: '7 dagen', days: 7 },
   { label: '30 dagen', days: 30 },
@@ -19,6 +24,7 @@ const PERIODS = [
 export function Overview() {
   const [days, setDays] = useState(30)
   const [totals, setTotals] = useState<WasteTotal[]>([])
+  const [reasons, setReasons] = useState<ReasonTotal[]>([])
   const [entryCount, setEntryCount] = useState(0)
 
   useEffect(() => {
@@ -27,8 +33,12 @@ export function Overview() {
     const logs = getWasteLogs().filter((l) => new Date(l.logged_at) >= since)
 
     setEntryCount(logs.length)
+
     const byProduct = new Map<string, WasteTotal>()
+    const byReason = new Map<string, number>()
     for (const log of logs) {
+      byReason.set(log.reason, (byReason.get(log.reason) ?? 0) + 1)
+
       const product = products.find((p) => p.id === log.product_id)
       if (!product) continue
       const existing = byProduct.get(log.product_id)
@@ -45,15 +55,21 @@ export function Overview() {
       }
     }
     setTotals([...byProduct.values()].sort((a, b) => b.total - a.total))
+    setReasons(
+      [...byReason.entries()]
+        .map(([reason, count]) => ({ reason, count }))
+        .sort((a, b) => b.count - a.count),
+    )
   }, [days])
 
   const maxTotal = Math.max(...totals.map((t) => t.total), 1)
+  const maxReasonCount = Math.max(...reasons.map((r) => r.count), 1)
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
         <h1 className="text-lg font-semibold text-neutral-900">Overzicht derving</h1>
-        <p className="mt-1 text-sm text-neutral-500">Wat wordt er het meest weggegooid?</p>
+        <p className="mt-1 text-sm text-neutral-500">Wat wordt er het meest weggegooid, en waarom?</p>
       </div>
 
       <div className="flex gap-2">
@@ -80,24 +96,50 @@ export function Overview() {
           <p className="text-sm text-neutral-500">
             {entryCount} {entryCount === 1 ? 'melding' : 'meldingen'} in de afgelopen {days} dagen
           </p>
-          <div className="space-y-2">
-            {totals.map((t) => (
-              <div key={t.product_id} className="rounded-xl border border-neutral-200 bg-white p-3">
-                <div className="flex items-baseline justify-between text-sm">
-                  <span className="font-medium text-neutral-900">{t.name}</span>
-                  <span className="text-neutral-500">
-                    {t.total} {t.unit}
-                  </span>
+
+          <div>
+            <h2 className="mb-3 text-sm font-semibold text-neutral-700">Per product</h2>
+            <div className="space-y-2">
+              {totals.map((t) => (
+                <div key={t.product_id} className="rounded-xl border border-neutral-200 bg-white p-3">
+                  <div className="flex items-baseline justify-between text-sm">
+                    <span className="font-medium text-neutral-900">{t.name}</span>
+                    <span className="text-neutral-500">
+                      {t.total} {t.unit}
+                    </span>
+                  </div>
+                  <p className="mb-1.5 text-xs text-neutral-400">{t.category}</p>
+                  <div className="h-1.5 w-full rounded-full bg-neutral-100">
+                    <div
+                      className="h-1.5 rounded-full bg-neutral-900"
+                      style={{ width: `${(t.total / maxTotal) * 100}%` }}
+                    />
+                  </div>
                 </div>
-                <p className="mb-1.5 text-xs text-neutral-400">{t.category}</p>
-                <div className="h-1.5 w-full rounded-full bg-neutral-100">
-                  <div
-                    className="h-1.5 rounded-full bg-neutral-900"
-                    style={{ width: `${(t.total / maxTotal) * 100}%` }}
-                  />
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <h2 className="mb-3 text-sm font-semibold text-neutral-700">Per reden</h2>
+            <div className="space-y-2">
+              {reasons.map((r) => (
+                <div key={r.reason} className="rounded-xl border border-neutral-200 bg-white p-3">
+                  <div className="flex items-baseline justify-between text-sm">
+                    <span className="font-medium text-neutral-900">{r.reason}</span>
+                    <span className="text-neutral-500">
+                      {r.count} {r.count === 1 ? 'keer' : 'keer'}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 h-1.5 w-full rounded-full bg-neutral-100">
+                    <div
+                      className="h-1.5 rounded-full bg-neutral-400"
+                      style={{ width: `${(r.count / maxReasonCount) * 100}%` }}
+                    />
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </>
       )}

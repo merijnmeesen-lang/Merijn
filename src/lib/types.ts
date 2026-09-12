@@ -3,7 +3,8 @@ export interface Product {
   name: string
   category: string
   unit: string
-  par_level: number
+  par_level_weekday: number
+  par_level_weekend: number
 }
 
 export interface StockCount {
