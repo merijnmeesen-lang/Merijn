@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { addStockCounts, getProducts } from '../lib/localStore'
 import { useName } from '../lib/useName'
 import type { Product } from '../lib/types'
 
@@ -10,24 +10,13 @@ interface OrderLine {
 
 export function StockCount() {
   const [products, setProducts] = useState<Product[]>([])
-  const [loading, setLoading] = useState(true)
   const [counts, setCounts] = useState<Record<string, string>>({})
   const [name, setName] = useName()
   const [error, setError] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
   const [orderList, setOrderList] = useState<OrderLine[] | null>(null)
 
   useEffect(() => {
-    supabase
-      .from('products')
-      .select('*')
-      .order('category')
-      .order('name')
-      .then(({ data, error }) => {
-        if (error) setError(error.message)
-        else setProducts(data)
-        setLoading(false)
-      })
+    setProducts(getProducts())
   }, [])
 
   const grouped = useMemo(() => {
@@ -40,21 +29,19 @@ export function StockCount() {
     return [...groups.entries()]
   }, [products])
 
-  async function handleSubmit() {
+  function handleSubmit() {
     setError(null)
     const entries = Object.entries(counts).filter(([, v]) => v.trim() !== '')
     if (entries.length === 0) return setError('Vul minstens één voorraad in.')
     if (!name.trim()) return setError('Vul in wie de telling doet.')
 
-    setSaving(true)
-    const rows = entries.map(([product_id, qty]) => ({
-      product_id,
-      quantity: Number(qty),
-      counted_by: name.trim(),
-    }))
-    const { error } = await supabase.from('stock_counts').insert(rows)
-    setSaving(false)
-    if (error) return setError(error.message)
+    addStockCounts(
+      entries.map(([product_id, qty]) => ({
+        product_id,
+        quantity: Number(qty),
+        counted_by: name.trim(),
+      })),
+    )
 
     const lines: OrderLine[] = entries
       .map(([productId, qty]) => {
@@ -149,9 +136,7 @@ export function StockCount() {
         className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
       />
 
-      {loading ? (
-        <p className="text-sm text-neutral-400">Laden...</p>
-      ) : products.length === 0 ? (
+      {products.length === 0 ? (
         <p className="text-sm text-neutral-400">
           Nog geen producten. Voeg eerst producten toe via het tabblad "Producten".
         </p>
@@ -195,10 +180,9 @@ export function StockCount() {
         <button
           type="button"
           onClick={handleSubmit}
-          disabled={saving}
-          className="w-full rounded-lg bg-neutral-900 py-3 text-sm font-medium text-white disabled:opacity-50"
+          className="w-full rounded-lg bg-neutral-900 py-3 text-sm font-medium text-white"
         >
-          {saving ? 'Bezig...' : 'Bestellijst genereren'}
+          Bestellijst genereren
         </button>
       )}
     </div>

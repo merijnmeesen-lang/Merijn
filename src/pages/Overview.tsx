@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
 import { subDays } from 'date-fns'
-import { supabase } from '../lib/supabase'
+import { useEffect, useState } from 'react'
+import { getProducts, getWasteLogs } from '../lib/localStore'
 
 interface WasteTotal {
   product_id: string
@@ -20,37 +20,31 @@ export function Overview() {
   const [days, setDays] = useState(30)
   const [totals, setTotals] = useState<WasteTotal[]>([])
   const [entryCount, setEntryCount] = useState(0)
-  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    setLoading(true)
-    supabase
-      .from('waste_logs')
-      .select('quantity, product_id, products(name, unit, category)')
-      .gte('logged_at', subDays(new Date(), days).toISOString())
-      .then(({ data }) => {
-        if (!data) return setLoading(false)
+    const products = getProducts()
+    const since = subDays(new Date(), days)
+    const logs = getWasteLogs().filter((l) => new Date(l.logged_at) >= since)
 
-        setEntryCount(data.length)
-        const byProduct = new Map<string, WasteTotal>()
-        for (const row of data) {
-          const product = row.products as unknown as { name: string; unit: string; category: string }
-          const existing = byProduct.get(row.product_id)
-          if (existing) {
-            existing.total += row.quantity
-          } else {
-            byProduct.set(row.product_id, {
-              product_id: row.product_id,
-              name: product.name,
-              unit: product.unit,
-              category: product.category || 'Overig',
-              total: row.quantity,
-            })
-          }
-        }
-        setTotals([...byProduct.values()].sort((a, b) => b.total - a.total))
-        setLoading(false)
-      })
+    setEntryCount(logs.length)
+    const byProduct = new Map<string, WasteTotal>()
+    for (const log of logs) {
+      const product = products.find((p) => p.id === log.product_id)
+      if (!product) continue
+      const existing = byProduct.get(log.product_id)
+      if (existing) {
+        existing.total += log.quantity
+      } else {
+        byProduct.set(log.product_id, {
+          product_id: log.product_id,
+          name: product.name,
+          unit: product.unit,
+          category: product.category || 'Overig',
+          total: log.quantity,
+        })
+      }
+    }
+    setTotals([...byProduct.values()].sort((a, b) => b.total - a.total))
   }, [days])
 
   const maxTotal = Math.max(...totals.map((t) => t.total), 1)
@@ -77,9 +71,7 @@ export function Overview() {
         ))}
       </div>
 
-      {loading ? (
-        <p className="text-sm text-neutral-400">Laden...</p>
-      ) : totals.length === 0 ? (
+      {totals.length === 0 ? (
         <p className="rounded-xl border border-neutral-200 bg-white p-4 text-sm text-neutral-500">
           Geen derving ingevoerd in deze periode.
         </p>

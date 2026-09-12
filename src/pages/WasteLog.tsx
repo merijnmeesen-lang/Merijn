@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { supabase } from '../lib/supabase'
+import { addWasteLog, getProducts, getWasteLogs } from '../lib/localStore'
 import { useName } from '../lib/useName'
 import type { Product, WasteLog as WasteLogRow } from '../lib/types'
 
@@ -7,38 +7,25 @@ const REASONS = ['Over datum', 'Aangebrand/mislukt', 'Retour klant', 'Gevallen/g
 
 export function WasteLog() {
   const [products, setProducts] = useState<Product[]>([])
-  const [recent, setRecent] = useState<(WasteLogRow & { products: Pick<Product, 'name' | 'unit'> })[]>([])
+  const [recent, setRecent] = useState<WasteLogRow[]>([])
   const [productId, setProductId] = useState('')
   const [quantity, setQuantity] = useState('')
   const [reason, setReason] = useState(REASONS[0])
   const [name, setName] = useName()
   const [error, setError] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-
-  async function loadRecent() {
-    const { data } = await supabase
-      .from('waste_logs')
-      .select('*, products(name, unit)')
-      .order('logged_at', { ascending: false })
-      .limit(10)
-    if (data) setRecent(data)
-  }
 
   useEffect(() => {
-    supabase
-      .from('products')
-      .select('*')
-      .order('name')
-      .then(({ data }) => {
-        if (data) {
-          setProducts(data)
-          setProductId((current) => current || data[0]?.id || '')
-        }
-      })
-    loadRecent()
+    const loaded = getProducts()
+    setProducts(loaded)
+    setProductId(loaded[0]?.id ?? '')
+    setRecent(getWasteLogs().slice(0, 10))
   }, [])
 
-  async function handleSubmit(e: FormEvent) {
+  function productFor(id: string) {
+    return products.find((p) => p.id === id)
+  }
+
+  function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
     if (!productId) return setError('Kies een product.')
@@ -46,18 +33,9 @@ export function WasteLog() {
     const qty = Number(quantity)
     if (!qty || qty <= 0) return setError('Vul een geldige hoeveelheid in.')
 
-    setSaving(true)
-    const { error } = await supabase.from('waste_logs').insert({
-      product_id: productId,
-      quantity: qty,
-      reason,
-      logged_by: name.trim(),
-    })
-    setSaving(false)
-    if (error) return setError(error.message)
-
+    addWasteLog({ product_id: productId, quantity: qty, reason, logged_by: name.trim() })
     setQuantity('')
-    await loadRecent()
+    setRecent(getWasteLogs().slice(0, 10))
   }
 
   return (
@@ -113,10 +91,10 @@ export function WasteLog() {
 
         <button
           type="submit"
-          disabled={saving || products.length === 0}
+          disabled={products.length === 0}
           className="w-full rounded-lg bg-neutral-900 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
-          {saving ? 'Bezig...' : 'Invoeren'}
+          Invoeren
         </button>
         {products.length === 0 && (
           <p className="text-xs text-neutral-400">
@@ -129,17 +107,20 @@ export function WasteLog() {
         <div>
           <h2 className="mb-2 text-sm font-semibold text-neutral-500">Laatst ingevoerd</h2>
           <div className="space-y-1">
-            {recent.map((r) => (
-              <div
-                key={r.id}
-                className="flex justify-between rounded-lg border border-neutral-100 bg-white px-3 py-2 text-sm"
-              >
-                <span>
-                  {r.products.name} — {r.quantity} {r.products.unit} ({r.reason})
-                </span>
-                <span className="text-neutral-400">{r.logged_by}</span>
-              </div>
-            ))}
+            {recent.map((r) => {
+              const product = productFor(r.product_id)
+              return (
+                <div
+                  key={r.id}
+                  className="flex justify-between rounded-lg border border-neutral-100 bg-white px-3 py-2 text-sm"
+                >
+                  <span>
+                    {product?.name ?? 'Onbekend product'} — {r.quantity} {product?.unit} ({r.reason})
+                  </span>
+                  <span className="text-neutral-400">{r.logged_by}</span>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}

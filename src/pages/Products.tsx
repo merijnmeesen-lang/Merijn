@@ -1,10 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { supabase } from '../lib/supabase'
+import { addProduct, deleteProduct, getProducts, updateProduct } from '../lib/localStore'
 import type { Product } from '../lib/types'
 
 export function Products() {
   const [products, setProducts] = useState<Product[]>([])
-  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const [name, setName] = useState('')
@@ -12,46 +11,34 @@ export function Products() {
   const [unit, setUnit] = useState('')
   const [parLevel, setParLevel] = useState('')
 
-  async function load() {
-    setLoading(true)
-    const { data, error } = await supabase.from('products').select('*').order('category').order('name')
-    if (error) setError(error.message)
-    else setProducts(data)
-    setLoading(false)
-  }
-
   useEffect(() => {
-    load()
+    setProducts(getProducts())
   }, [])
 
-  async function handleAdd(e: FormEvent) {
+  function handleAdd(e: FormEvent) {
     e.preventDefault()
     setError(null)
-    const { error } = await supabase.from('products').insert({
-      name,
-      category,
-      unit,
-      par_level: Number(parLevel) || 0,
-    })
-    if (error) return setError(error.message)
+    if (!name.trim() || !unit.trim()) return setError('Vul naam en eenheid in.')
+
+    addProduct({ name: name.trim(), category: category.trim(), unit: unit.trim(), par_level: Number(parLevel) || 0 })
+    setProducts(getProducts())
     setName('')
     setCategory('')
     setUnit('')
     setParLevel('')
-    await load()
   }
 
-  async function updateParLevel(product: Product, value: string) {
+  function handleParLevelChange(product: Product, value: string) {
     const par_level = Number(value)
     if (Number.isNaN(par_level)) return
-    setProducts((prev) => prev.map((p) => (p.id === product.id ? { ...p, par_level } : p)))
-    await supabase.from('products').update({ par_level }).eq('id', product.id)
+    updateProduct(product.id, { par_level })
+    setProducts(getProducts())
   }
 
-  async function removeProduct(id: string) {
+  function removeProduct(id: string) {
     if (!confirm('Dit product verwijderen?')) return
-    await supabase.from('products').delete().eq('id', id)
-    await load()
+    deleteProduct(id)
+    setProducts(getProducts())
   }
 
   return (
@@ -104,9 +91,7 @@ export function Products() {
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
-      {loading ? (
-        <p className="text-sm text-neutral-400">Laden...</p>
-      ) : products.length === 0 ? (
+      {products.length === 0 ? (
         <p className="text-sm text-neutral-400">Nog geen producten toegevoegd.</p>
       ) : (
         <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
@@ -131,7 +116,7 @@ export function Products() {
                       type="number"
                       step="any"
                       defaultValue={p.par_level}
-                      onBlur={(e) => updateParLevel(p, e.target.value)}
+                      onBlur={(e) => handleParLevelChange(p, e.target.value)}
                       className="w-20 rounded-lg border border-neutral-300 px-2 py-1"
                     />
                   </td>
