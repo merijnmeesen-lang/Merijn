@@ -49,7 +49,7 @@ export function WasteLog() {
   const [error, setError] = useState<string | null>(null)
 
   const [sample, setSample] = useState<SampleFn | null>(null)
-  const [imagesOk, setImagesOk] = useState(false)
+  const [photoStatus, setPhotoStatus] = useState<'checking' | 'no-sample' | 'no-images' | 'ready'>('checking')
   const [extracting, setExtracting] = useState(false)
   const [extractError, setExtractError] = useState<string | null>(null)
   const [reviewRows, setReviewRows] = useState<ReviewRow[] | null>(null)
@@ -62,9 +62,10 @@ export function WasteLog() {
 
     getClaudeSample().then((s) => {
       setSample(s)
-      s?.limits()
-        .then((l) => setImagesOk(!!l.images))
-        .catch(() => setImagesOk(false))
+      if (!s) return setPhotoStatus('no-sample')
+      s.limits()
+        .then((l) => setPhotoStatus(l.images ? 'ready' : 'no-images'))
+        .catch(() => setPhotoStatus('no-images'))
     })
   }, [])
 
@@ -163,26 +164,37 @@ Gebruik voor "product" zo veel mogelijk exact een van de bekende producten hierb
         className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
       />
 
-      {sample && imagesOk && !reviewRows && (
+      {!reviewRows && (
         <div className="rounded-xl border border-dashed border-neutral-300 bg-white p-4 text-center">
-          <label className="cursor-pointer text-sm font-medium text-neutral-700">
-            {extracting ? 'Foto wordt gelezen...' : '📷 Foto van papieren dervingslijst uploaden'}
-            <input
-              type="file"
-              accept="image/*"
-              hidden
-              disabled={extracting}
-              onChange={(e) => {
-                const file = e.target.files?.[0]
-                e.target.value = ''
-                if (file) handlePhoto(file)
-              }}
-            />
-          </label>
-          <p className="mt-1 text-xs text-neutral-400">
-            De lijst wordt automatisch gelezen — je controleert 'm hieronder voor je opslaat.
-          </p>
-          {extractError && <p className="mt-2 text-sm text-red-600">{extractError}</p>}
+          {photoStatus === 'ready' ? (
+            <>
+              <label className="cursor-pointer text-sm font-medium text-neutral-700">
+                {extracting ? 'Foto wordt gelezen...' : '📷 Foto van papieren dervingslijst uploaden'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  disabled={extracting}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    e.target.value = ''
+                    if (file) handlePhoto(file)
+                  }}
+                />
+              </label>
+              <p className="mt-1 text-xs text-neutral-400">
+                De lijst wordt automatisch gelezen — je controleert 'm hieronder voor je opslaat.
+              </p>
+              {extractError && <p className="mt-2 text-sm text-red-600">{extractError}</p>}
+            </>
+          ) : (
+            <p className="text-xs text-neutral-400">
+              📷 Fotofunctie:{' '}
+              {photoStatus === 'checking' && 'wordt gecontroleerd...'}
+              {photoStatus === 'no-sample' && 'niet beschikbaar in deze weergave (sample-capability niet gevonden)'}
+              {photoStatus === 'no-images' && 'wel beschikbaar, maar foto\'s uploaden wordt hier niet ondersteund'}
+            </p>
+          )}
         </div>
       )}
 
