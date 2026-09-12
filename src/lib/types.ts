@@ -1,23 +1,24 @@
-export type Role = 'manager' | 'staff'
-
-export interface Profile {
-  id: string
-  restaurant_id: string
-  full_name: string
-  role: Role
-}
-
-export interface Restaurant {
-  id: string
-  name: string
-  join_code: string
-}
-
 export interface Product {
   id: string
-  restaurant_id: string
   name: string
   category: string
   unit: string
   par_level: number
+}
+
+export interface StockCount {
+  id: string
+  product_id: string
+  quantity: number
+  counted_by: string
+  counted_at: string
+}
+
+export interface WasteLog {
+  id: string
+  product_id: string
+  quantity: number
+  reason: string
+  logged_by: string
+  logged_at: string
 }
