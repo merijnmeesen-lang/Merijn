@@ -14,7 +14,31 @@ export interface RenderOptions {
   height: number
   fps: number
   audioFile: File | null
+  narrate: boolean
+  captureNarrationAudio: boolean
   onProgress: (fraction: number) => void
+}
+
+const WORDS_PER_SECOND = 2.3
+
+export function estimateSpeechDurationMs(text: string): number {
+  const words = text.trim().split(/\s+/).filter(Boolean).length
+  if (words === 0) return 1200
+  return Math.round((words / WORDS_PER_SECOND) * 1000) + 500
+}
+
+function speakAndWait(text: string): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof speechSynthesis === 'undefined' || !text.trim()) {
+      resolve()
+      return
+    }
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.lang = 'nl-NL'
+    utterance.onend = () => resolve()
+    utterance.onerror = () => resolve()
+    speechSynthesis.speak(utterance)
+  })
 }
 
 const MOTIONS: MotionType[] = ['zoom-in', 'pan-left', 'zoom-out', 'pan-right']
@@ -158,7 +182,7 @@ export function isVideoRenderSupported(): boolean {
 }
 
 export async function renderVideo(
-  { slides, width, height, fps, audioFile, onProgress }: RenderOptions,
+  { slides, width, height, fps, audioFile, narrate, captureNarrationAudio, onProgress }: RenderOptions,
   canvas: HTMLCanvasElement,
 ): Promise<Blob> {
   if (slides.length === 0) throw new Error('Geen foto\'s om te renderen.')
@@ -170,13 +194,22 @@ export async function renderVideo(
   canvas.width = width
   canvas.height = height
 
-  const totalMs = slides.reduce((sum, s) => sum + s.durationMs, 0)
+  const totalEstimateMs = slides.reduce((sum, s) => sum + s.durationMs, 0)
   const videoStream = canvas.captureStream(fps)
   const tracks: MediaStreamTrack[] = [...videoStream.getVideoTracks()]
 
   let audioCtx: AudioContext | undefined
   let audioEl: HTMLAudioElement | undefined
-  if (audioFile) {
+  let displayStream: MediaStream | undefined
+
+  if (narrate && captureNarrationAudio && navigator.mediaDevices?.getDisplayMedia) {
+    // Speech synthesis has no capturable audio stream of its own, so the only
+    // way to bake the spoken narration into the exported file client-side is
+    // to have the browser capture this tab's own audio output.
+    displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true })
+    displayStream.getVideoTracks().forEach((t) => t.stop())
+    tracks.push(...displayStream.getAudioTracks())
+  } else if (audioFile) {
     audioEl = new Audio(URL.createObjectURL(audioFile))
     audioEl.loop = true
     audioCtx = new AudioContext()
@@ -204,44 +237,50 @@ export async function renderVideo(
   })
 
   recorder.start()
-  const start = performance.now()
+  let elapsedBefore = 0
 
-  await new Promise<void>((resolve) => {
-    function tick(now: number) {
-      const elapsed = now - start
-      onProgress(Math.min(1, elapsed / totalMs))
-      if (elapsed >= totalMs) {
-        resolve()
-        return
-      }
-
-      let acc = 0
-      let active = slides[0]
-      let localT = 0
-      for (const s of slides) {
-        if (elapsed < acc + s.durationMs) {
-          active = s
-          localT = (elapsed - acc) / s.durationMs
-          break
-        }
-        acc += s.durationMs
-      }
-
-      ctx.fillStyle = '#000'
-      ctx.fillRect(0, 0, width, height)
-      drawSlideFrame(ctx, active, localT, width, height)
-      drawCaption(ctx, active.caption, width, height)
-
-      requestAnimationFrame(tick)
+  for (const slide of slides) {
+    let speechDone = !narrate
+    if (narrate) {
+      speakAndWait(slide.caption).then(() => {
+        speechDone = true
+      })
     }
-    requestAnimationFrame(tick)
-  })
+
+    const slideStart = performance.now()
+    const safetyCapMs = Math.max(slide.durationMs, estimateSpeechDurationMs(slide.caption)) + 4000
+
+    await new Promise<void>((resolve) => {
+      function frame(now: number) {
+        const elapsedSlide = now - slideStart
+        const t = Math.min(1, elapsedSlide / slide.durationMs)
+
+        ctx.fillStyle = '#000'
+        ctx.fillRect(0, 0, width, height)
+        drawSlideFrame(ctx, slide, t, width, height)
+        drawCaption(ctx, slide.caption, width, height)
+
+        onProgress(Math.min(1, (elapsedBefore + elapsedSlide) / totalEstimateMs))
+
+        const minDurationDone = elapsedSlide >= slide.durationMs
+        if ((minDurationDone && speechDone) || elapsedSlide >= safetyCapMs) {
+          if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel()
+          elapsedBefore += elapsedSlide
+          resolve()
+          return
+        }
+        requestAnimationFrame(frame)
+      }
+      requestAnimationFrame(frame)
+    })
+  }
 
   recorder.stop()
   const blob = await stopped
 
   audioEl?.pause()
   audioCtx?.close()
+  displayStream?.getTracks().forEach((t) => t.stop())
   tracks.forEach((t) => t.stop())
 
   return blob

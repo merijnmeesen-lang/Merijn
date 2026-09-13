@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  estimateSpeechDurationMs,
   isVideoRenderSupported,
   pickMotion,
   renderVideo,
@@ -9,12 +10,25 @@ import {
 
 interface PhotoItem {
   id: string
-  file: File
-  url: string
+  file: File | null
+  url: string | null
   img: HTMLImageElement | null
   caption: string
   durationSec: number
   motion: 'auto' | MotionType
+}
+
+function splitScript(script: string): string[] {
+  const paragraphs = script
+    .split(/\n\s*\n/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  if (paragraphs.length > 1) return paragraphs
+
+  return script
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
 }
 
 const MOTION_LABELS: Record<'auto' | MotionType, string> = {
@@ -33,6 +47,9 @@ export function ShortsVideoMaker() {
   const [photos, setPhotos] = useState<PhotoItem[]>([])
   const [defaultDuration, setDefaultDuration] = useState(3)
   const [musicFile, setMusicFile] = useState<File | null>(null)
+  const [script, setScript] = useState('')
+  const [narrate, setNarrate] = useState(false)
+  const [captureNarrationAudio, setCaptureNarrationAudio] = useState(false)
   const [isRendering, setIsRendering] = useState(false)
   const [progress, setProgress] = useState(0)
   const [resultUrl, setResultUrl] = useState<string | null>(null)
@@ -43,11 +60,21 @@ export function ShortsVideoMaker() {
 
   useEffect(() => {
     return () => {
-      photos.forEach((p) => URL.revokeObjectURL(p.url))
+      photos.forEach((p) => {
+        if (p.url) URL.revokeObjectURL(p.url)
+      })
       if (resultUrl) URL.revokeObjectURL(resultUrl)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  function loadImage(id: string, url: string) {
+    const img = new Image()
+    img.onload = () => {
+      setPhotos((prev) => prev.map((p) => (p.id === id ? { ...p, img } : p)))
+    }
+    img.src = url
+  }
 
   function handleFiles(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return
@@ -62,14 +89,40 @@ export function ShortsVideoMaker() {
     }))
     setPhotos((prev) => [...prev, ...items])
     setResultUrl(null)
+    items.forEach((item) => loadImage(item.id, item.url!))
+  }
 
-    items.forEach((item) => {
-      const img = new Image()
-      img.onload = () => {
-        setPhotos((prev) => prev.map((p) => (p.id === item.id ? { ...p, img } : p)))
-      }
-      img.src = item.url
+  function attachPhoto(id: string, file: File) {
+    const url = URL.createObjectURL(file)
+    setPhotos((prev) => prev.map((p) => (p.id === id ? { ...p, file, url, img: null } : p)))
+    loadImage(id, url)
+  }
+
+  function generateScenes() {
+    const scenes = splitScript(script)
+    if (scenes.length === 0) return
+    setResultUrl(null)
+    setPhotos((prev) => {
+      const next = [...prev]
+      scenes.forEach((text, i) => {
+        const durationSec = Math.max(1, Math.round((estimateSpeechDurationMs(text) / 1000) * 2) / 2)
+        if (next[i]) {
+          next[i] = { ...next[i], caption: text, durationSec }
+        } else {
+          next.push({
+            id: crypto.randomUUID(),
+            file: null,
+            url: null,
+            img: null,
+            caption: text,
+            durationSec,
+            motion: 'auto',
+          })
+        }
+      })
+      return next
     })
+    setNarrate(true)
   }
 
   function updatePhoto(id: string, patch: Partial<PhotoItem>) {
@@ -79,7 +132,7 @@ export function ShortsVideoMaker() {
   function removePhoto(id: string) {
     setPhotos((prev) => {
       const target = prev.find((p) => p.id === id)
-      if (target) URL.revokeObjectURL(target.url)
+      if (target?.url) URL.revokeObjectURL(target.url)
       return prev.filter((p) => p.id !== id)
     })
   }
@@ -101,6 +154,10 @@ export function ShortsVideoMaker() {
 
   async function handleGenerate() {
     if (photos.length === 0) return
+    if (photos.some((p) => !p.file)) {
+      setError('Voeg bij elke scène nog een foto toe voordat je genereert.')
+      return
+    }
     if (photos.some((p) => !p.img)) {
       setError('Wacht tot alle foto\'s geladen zijn en probeer opnieuw.')
       return
@@ -123,7 +180,16 @@ export function ShortsVideoMaker() {
       }))
 
       const blob = await renderVideo(
-        { slides, width: WIDTH, height: HEIGHT, fps: FPS, audioFile: musicFile, onProgress: setProgress },
+        {
+          slides,
+          width: WIDTH,
+          height: HEIGHT,
+          fps: FPS,
+          audioFile: musicFile,
+          narrate,
+          captureNarrationAudio: narrate && captureNarrationAudio,
+          onProgress: setProgress,
+        },
         canvas,
       )
       setResultUrl(URL.createObjectURL(blob))
@@ -152,6 +218,31 @@ export function ShortsVideoMaker() {
           Chrome voor het beste resultaat.
         </p>
       )}
+
+      <div className="space-y-2 rounded-xl border border-neutral-200 bg-white p-4">
+        <label className="block text-xs font-medium text-neutral-500">
+          Script (optioneel) — plak je tekst, elke alinea of zin wordt een scène
+        </label>
+        <textarea
+          value={script}
+          onChange={(e) => setScript(e.target.value)}
+          rows={4}
+          placeholder={'Vandaag laat ik je zien hoe...\n\nHet eerste wat je moet weten is...'}
+          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+        />
+        <button
+          type="button"
+          onClick={generateScenes}
+          disabled={!script.trim()}
+          className="rounded-lg bg-neutral-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-40"
+        >
+          Scènes genereren uit script
+        </button>
+        <p className="text-xs text-neutral-400">
+          Dit vult de ondertitels hieronder en zet automatisch een passende duur — jij voegt per
+          scène nog een foto toe.
+        </p>
+      </div>
 
       <div className="rounded-xl border border-neutral-200 bg-white p-4">
         <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-neutral-300 py-8 text-center hover:border-neutral-400">
@@ -198,7 +289,26 @@ export function ShortsVideoMaker() {
           <div className="space-y-2">
             {photos.map((p, i) => (
               <div key={p.id} className="flex gap-3 rounded-xl border border-neutral-200 bg-white p-3">
-                <img src={p.url} alt="" className="h-20 w-14 flex-shrink-0 rounded-lg object-cover" />
+                {p.url ? (
+                  <img src={p.url} alt="" className="h-20 w-14 flex-shrink-0 rounded-lg object-cover" />
+                ) : (
+                  <label className="flex h-20 w-14 flex-shrink-0 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-2 border-dashed border-neutral-300 text-center hover:border-neutral-400">
+                    <span className="text-[10px] font-medium leading-tight text-neutral-500">
+                      Foto
+                      <br />
+                      toevoegen
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) attachPhoto(p.id, file)
+                      }}
+                    />
+                  </label>
+                )}
                 <div className="flex min-w-0 flex-1 flex-col gap-2">
                   <input
                     type="text"
@@ -264,20 +374,62 @@ export function ShortsVideoMaker() {
             ))}
           </div>
 
-          <div className="space-y-2 rounded-xl border border-neutral-200 bg-white p-4">
-            <label className="block text-xs font-medium text-neutral-500">
-              Achtergrondmuziek (optioneel)
+          <div className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4">
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={narrate}
+                onChange={(e) => setNarrate(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-medium text-neutral-700">Ondertitels voorlezen als voice-over</span>
+                <br />
+                <span className="text-xs text-neutral-400">
+                  Gratis tekst-naar-spraak van je browser (klinkt robotachtig). De duur per scène
+                  wordt automatisch aangepast aan hoe lang de zin duurt om uit te spreken.
+                </span>
+              </span>
             </label>
-            <input
-              type="file"
-              accept="audio/*"
-              onChange={(e) => setMusicFile(e.target.files?.[0] ?? null)}
-              className="text-sm"
-            />
-            <p className="text-xs text-neutral-400">
-              Gebruik alleen muziek waar je rechten op hebt (bv. de YouTube Audio Library), anders
-              kan je Short gedempt worden of een claim krijgen.
-            </p>
+
+            {narrate && (
+              <label className="flex items-start gap-2 pl-6 text-sm">
+                <input
+                  type="checkbox"
+                  checked={captureNarrationAudio}
+                  onChange={(e) => setCaptureNarrationAudio(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="font-medium text-neutral-700">
+                    Stem meenemen in de gedownloade video (experimenteel)
+                  </span>
+                  <br />
+                  <span className="text-xs text-neutral-400">
+                    Werkt alleen in Chrome. Er verschijnt een schermdeel-venster — kies "Dit
+                    tabblad" en vink "Tabbladgeluid delen" aan, anders is de video stil.
+                  </span>
+                </span>
+              </label>
+            )}
+
+            {!(narrate && captureNarrationAudio) && (
+              <div className="space-y-2 border-t border-neutral-100 pt-3">
+                <label className="block text-xs font-medium text-neutral-500">
+                  Achtergrondmuziek (optioneel)
+                </label>
+                <input
+                  type="file"
+                  accept="audio/*"
+                  onChange={(e) => setMusicFile(e.target.files?.[0] ?? null)}
+                  className="text-sm"
+                />
+                <p className="text-xs text-neutral-400">
+                  Gebruik alleen muziek waar je rechten op hebt (bv. de YouTube Audio Library),
+                  anders kan je Short gedempt worden of een claim krijgen.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col items-center gap-3 rounded-xl border border-neutral-200 bg-white p-4">
