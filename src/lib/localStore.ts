@@ -5,6 +5,7 @@ const KEYS = {
   stockCounts: 'voorraad-app:stock_counts',
   wasteLogs: 'voorraad-app:waste_logs',
   tradeSignals: 'voorraad-app:trade_signals',
+  riskSettings: 'voorraad-app:risk_settings',
 }
 
 function read<T>(key: string): T[] {
@@ -108,4 +109,28 @@ export function setTradeSignalOutcome(id: string, outcome: TradeOutcome) {
 
 export function deleteTradeSignal(id: string) {
   write(KEYS.tradeSignals, read<TradeSignal>(KEYS.tradeSignals).filter((s) => s.id !== id))
+}
+
+export interface RiskSettings {
+  accountSize: number
+  riskPct: number
+}
+
+const DEFAULT_RISK_SETTINGS: RiskSettings = { accountSize: 10000, riskPct: 1 }
+
+export function getRiskSettings(): RiskSettings {
+  try {
+    const raw = localStorage.getItem(KEYS.riskSettings)
+    return raw ? { ...DEFAULT_RISK_SETTINGS, ...(JSON.parse(raw) as Partial<RiskSettings>) } : DEFAULT_RISK_SETTINGS
+  } catch {
+    return DEFAULT_RISK_SETTINGS
+  }
+}
+
+export function setRiskSettings(settings: RiskSettings) {
+  try {
+    localStorage.setItem(KEYS.riskSettings, JSON.stringify(settings))
+  } catch {
+    // localStorage unavailable — setting is dropped, defaults apply next load.
+  }
 }

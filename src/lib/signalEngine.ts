@@ -4,6 +4,8 @@ export type SignalType = 'KOPEN' | 'VERKOPEN' | 'AFWACHTEN'
 
 export interface TradeIdea {
   signal: SignalType
+  /** -3 (sterk bearish) .. +3 (sterk bullish), som van de losse indicator-scores. */
+  score: number
   price: number
   stopLoss: number | null
   takeProfit: number | null
@@ -12,6 +14,34 @@ export interface TradeIdea {
   macdLine: number
   macdSignal: number
   reasons: string[]
+}
+
+export interface PositionSizing {
+  riskAmount: number
+  units: number
+  positionValue: number
+}
+
+/** Positiegrootte op basis van vast risico per trade (% van account), zodat het
+ * verlies bij het raken van de stop-loss nooit meer is dan dat percentage.
+ * Spot-only: de inzet wordt nooit groter dan de beschikbare account-omvang (geen margin). */
+export function computePositionSize(
+  accountSize: number,
+  riskPct: number,
+  entry: number,
+  stopLoss: number,
+): PositionSizing {
+  const riskAmount = accountSize * (riskPct / 100)
+  const perUnitRisk = Math.abs(entry - stopLoss)
+  if (perUnitRisk <= 0 || accountSize <= 0) return { riskAmount, units: 0, positionValue: 0 }
+
+  let units = riskAmount / perUnitRisk
+  let positionValue = units * entry
+  if (positionValue > accountSize) {
+    positionValue = accountSize
+    units = positionValue / entry
+  }
+  return { riskAmount, units, positionValue }
 }
 
 const TREND_PERIOD = 50
@@ -89,6 +119,7 @@ export function buildTradeIdea(prices: number[]): TradeIdea {
 
   return {
     signal,
+    score,
     price,
     stopLoss,
     takeProfit,

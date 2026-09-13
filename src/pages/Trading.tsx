@@ -1,5 +1,12 @@
 import { useState } from 'react'
-import { addTradeSignal, deleteTradeSignal, getTradeSignals, setTradeSignalOutcome } from '../lib/localStore'
+import {
+  addTradeSignal,
+  deleteTradeSignal,
+  getRiskSettings,
+  getTradeSignals,
+  setRiskSettings,
+  setTradeSignalOutcome,
+} from '../lib/localStore'
 import {
   CHAINS,
   fetchPriceHistoryByContract,
@@ -7,7 +14,7 @@ import {
   PRESET_ASSETS,
   QUOTE_CURRENCIES,
 } from '../lib/marketData'
-import { buildTradeIdea, type TradeIdea } from '../lib/signalEngine'
+import { buildTradeIdea, computePositionSize, type TradeIdea } from '../lib/signalEngine'
 import type { TradeOutcome } from '../lib/types'
 
 const PERIODS = [
@@ -29,15 +36,64 @@ export function Trading() {
   const [address, setAddress] = useState('')
   const [currency, setCurrency] = useState(QUOTE_CURRENCIES[0].code)
   const [days, setDays] = useState(7)
+  const currencySymbol = QUOTE_CURRENCIES.find((c) => c.code === currency)?.symbol ?? ''
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [idea, setIdea] = useState<TradeIdea | null>(null)
   const [assetLabel, setAssetLabel] = useState('')
-  const [currencySymbol, setCurrencySymbol] = useState(QUOTE_CURRENCIES[0].symbol)
   const [saved, setSaved] = useState(false)
 
   const [history, setHistory] = useState(getTradeSignals())
+
+  const [risk, setRisk] = useState(getRiskSettings())
+
+  function updateRisk(patch: Partial<typeof risk>) {
+    const next = { ...risk, ...patch }
+    setRisk(next)
+    setRiskSettings(next)
+  }
+
+  const [scanResults, setScanResults] = useState<{ label: string; idea: TradeIdea }[] | null>(null)
+  const [scanLoading, setScanLoading] = useState(false)
+  const [scanError, setScanError] = useState<string | null>(null)
+
+  async function runScan() {
+    setScanLoading(true)
+    setScanError(null)
+    setScanResults(null)
+    try {
+      const results: { label: string; idea: TradeIdea }[] = []
+      for (const asset of PRESET_ASSETS) {
+        try {
+          const points = await fetchPriceHistoryByCoin(asset.coinId, currency, days)
+          results.push({ label: asset.label, idea: buildTradeIdea(points.map((p) => p.price)) })
+        } catch {
+          // Sla deze munt over (bv. tijdelijke rate limit) en ga door met de rest van de watchlist.
+        }
+      }
+      if (results.length === 0) throw new Error('Geen enkele munt kon worden opgehaald, probeer het zo weer.')
+      results.sort((a, b) => Math.abs(b.idea.score) - Math.abs(a.idea.score))
+      setScanResults(results)
+    } catch (e) {
+      setScanError(e instanceof Error ? e.message : 'Scan mislukt.')
+    } finally {
+      setScanLoading(false)
+    }
+  }
+
+  function saveScanResult(label: string, idea: TradeIdea) {
+    addTradeSignal({
+      asset_label: label,
+      currency_symbol: currencySymbol,
+      signal: idea.signal,
+      price: idea.price,
+      stop_loss: idea.stopLoss,
+      take_profit: idea.takeProfit,
+      reasons: idea.reasons,
+    })
+    setHistory(getTradeSignals())
+  }
 
   async function runAnalysis() {
     setLoading(true)
@@ -61,7 +117,6 @@ export function Trading() {
 
       const prices = points.map((p) => p.price)
       setAssetLabel(label)
-      setCurrencySymbol(QUOTE_CURRENCIES.find((c) => c.code === currency)?.symbol ?? '')
       setIdea(buildTradeIdea(prices))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Onbekende fout bij het ophalen van koersdata.')
@@ -107,6 +162,39 @@ export function Trading() {
           Regelgebaseerde koop/verkoop-signalen op basis van RSI, EMA-trend en MACD. Geen garantie op
           winst — test op een demo-account, dit is geen financieel advies.
         </p>
+      </div>
+
+      <div className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4">
+        <h2 className="text-sm font-semibold text-neutral-700">Risico-instellingen</h2>
+        <p className="text-xs text-neutral-500">
+          Bepaalt hoe groot elke voorgestelde inzet is: bij het raken van de stop-loss verlies je nooit
+          meer dan dit percentage van je account.
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="text-xs text-neutral-500">
+            Account-omvang ({currencySymbol})
+            <input
+              type="number"
+              min={0}
+              step="any"
+              value={risk.accountSize}
+              onChange={(e) => updateRisk({ accountSize: Number(e.target.value) || 0 })}
+              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="text-xs text-neutral-500">
+            Risico per trade (%)
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step="any"
+              value={risk.riskPct}
+              onChange={(e) => updateRisk({ riskPct: Number(e.target.value) || 0 })}
+              className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+            />
+          </label>
+        </div>
       </div>
 
       <div className="space-y-4 rounded-xl border border-neutral-200 bg-white p-4">
@@ -206,10 +294,77 @@ export function Trading() {
           disabled={loading}
           className="w-full rounded-lg bg-neutral-900 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
-          {loading ? 'Bezig met ophalen...' : 'Analyseer'}
+          {loading ? 'Bezig met ophalen...' : 'Analyseer deze munt'}
         </button>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
+      </div>
+
+      <div className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4">
+        <div>
+          <h2 className="text-sm font-semibold text-neutral-700">Scan hele watchlist</h2>
+          <p className="mt-1 text-xs text-neutral-500">
+            Analyseert alle {PRESET_ASSETS.length} preset-munten in één keer en zet ze op volgorde van
+            sterkste signaal, zodat je in één oogopslag ziet waar nu de beste (of enige) kans zit.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={runScan}
+          disabled={scanLoading}
+          className="w-full rounded-lg border border-neutral-900 py-2 text-sm font-medium text-neutral-900 disabled:opacity-50"
+        >
+          {scanLoading ? 'Bezig met scannen...' : 'Scan alles'}
+        </button>
+        {scanError && <p className="text-sm text-red-600">{scanError}</p>}
+
+        {scanResults && (
+          <div className="space-y-2">
+            {scanResults.map(({ label, idea: r }) => {
+              const sizing =
+                r.signal !== 'AFWACHTEN' ? computePositionSize(risk.accountSize, risk.riskPct, r.price, r.stopLoss!) : null
+              return (
+                <div key={label} className="rounded-lg border border-neutral-200 p-3 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-neutral-900">{label}</span>
+                    <span className={`rounded px-1.5 py-0.5 text-xs font-semibold ${SIGNAL_STYLES[r.signal]}`}>
+                      {r.signal}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-neutral-500">
+                    Prijs {currencySymbol}
+                    {fmt(r.price)}
+                    {r.signal !== 'AFWACHTEN' && (
+                      <>
+                        {' '}
+                        · SL {currencySymbol}
+                        {fmt(r.stopLoss!)} · TP {currencySymbol}
+                        {fmt(r.takeProfit!)}
+                      </>
+                    )}
+                  </p>
+                  {sizing && sizing.units > 0 && (
+                    <p className="mt-1 text-neutral-700">
+                      Voorstel: {sizing.units.toLocaleString('nl-NL', { maximumFractionDigits: 6 })} stuks ≈{' '}
+                      {currencySymbol}
+                      {fmt(sizing.positionValue)} (risico {currencySymbol}
+                      {fmt(sizing.riskAmount)})
+                    </p>
+                  )}
+                  {r.signal !== 'AFWACHTEN' && (
+                    <button
+                      type="button"
+                      onClick={() => saveScanResult(label, r)}
+                      className="mt-2 rounded-lg border border-neutral-300 px-2 py-1 text-xs font-medium text-neutral-700"
+                    >
+                      Signaal opslaan
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {idea && (
@@ -255,6 +410,28 @@ export function Trading() {
               </div>
             </div>
           )}
+
+          {idea.signal !== 'AFWACHTEN' &&
+            (() => {
+              const sizing = computePositionSize(risk.accountSize, risk.riskPct, idea.price, idea.stopLoss!)
+              if (sizing.units <= 0) return null
+              return (
+                <div className="rounded-lg bg-neutral-50 p-3 text-sm">
+                  <p className="text-xs text-neutral-400">
+                    Voorstel bij {currencySymbol}
+                    {fmt(risk.accountSize)} account en {risk.riskPct}% risico
+                  </p>
+                  <p className="mt-1 font-medium text-neutral-900">
+                    {sizing.units.toLocaleString('nl-NL', { maximumFractionDigits: 6 })} stuks ≈ {currencySymbol}
+                    {fmt(sizing.positionValue)}
+                  </p>
+                  <p className="text-xs text-neutral-500">
+                    Bij het raken van de stop-loss verlies je hier max. {currencySymbol}
+                    {fmt(sizing.riskAmount)}.
+                  </p>
+                </div>
+              )
+            })()}
 
           <div>
             <h2 className="mb-1.5 text-sm font-semibold text-neutral-700">Waarom dit signaal</h2>
