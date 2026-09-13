@@ -39,6 +39,20 @@ export interface PricePoint {
   price: number
 }
 
+export interface QuoteCurrency {
+  code: string
+  label: string
+  symbol: string
+}
+
+/** CoinGecko ondersteunt tientallen fiat-valuta als `vs_currency`. Dit zijn de meest gebruikte. */
+export const QUOTE_CURRENCIES: QuoteCurrency[] = [
+  { code: 'aud', label: 'Australische dollar (AUD)', symbol: 'A$' },
+  { code: 'usd', label: 'Amerikaanse dollar (USD)', symbol: '$' },
+  { code: 'eur', label: 'Euro (EUR)', symbol: '€' },
+  { code: 'gbp', label: 'Britse pond (GBP)', symbol: '£' },
+]
+
 const COINGECKO_BASE = 'https://api.coingecko.com/api/v3'
 
 async function fetchMarketChart(url: string): Promise<PricePoint[]> {
@@ -55,19 +69,22 @@ async function fetchMarketChart(url: string): Promise<PricePoint[]> {
 
 /** Historische prijzen voor een preset munt (CoinGecko coin-id). `days` stuurt de granulariteit:
  * 1 dag → 5-minutelijks, 2–90 dagen → uurlijks. */
-export function fetchPriceHistoryByCoin(coinId: string, days: number): Promise<PricePoint[]> {
-  return fetchMarketChart(`${COINGECKO_BASE}/coins/${encodeURIComponent(coinId)}/market_chart?vs_currency=usd&days=${days}`)
+export function fetchPriceHistoryByCoin(coinId: string, vsCurrency: string, days: number): Promise<PricePoint[]> {
+  return fetchMarketChart(
+    `${COINGECKO_BASE}/coins/${encodeURIComponent(coinId)}/market_chart?vs_currency=${vsCurrency}&days=${days}`,
+  )
 }
 
 /** Historische prijzen voor een willekeurige token via het contractadres op een chain. */
 export function fetchPriceHistoryByContract(
   platformId: string,
   contractAddress: string,
+  vsCurrency: string,
   days: number,
 ): Promise<PricePoint[]> {
   return fetchMarketChart(
     `${COINGECKO_BASE}/coins/${encodeURIComponent(platformId)}/contract/${encodeURIComponent(
       contractAddress.trim().toLowerCase(),
-    )}/market_chart?vs_currency=usd&days=${days}`,
+    )}/market_chart?vs_currency=${vsCurrency}&days=${days}`,
   )
 }

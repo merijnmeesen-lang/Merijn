@@ -30,6 +30,7 @@ export type TradeOutcome = 'open' | 'winst' | 'verlies'
 export interface TradeSignal {
   id: string
   asset_label: string
+  currency_symbol: string
   signal: TradeSignalType
   price: number
   stop_loss: number | null

@@ -5,6 +5,7 @@ import {
   fetchPriceHistoryByContract,
   fetchPriceHistoryByCoin,
   PRESET_ASSETS,
+  QUOTE_CURRENCIES,
 } from '../lib/marketData'
 import { buildTradeIdea, type TradeIdea } from '../lib/signalEngine'
 import type { TradeOutcome } from '../lib/types'
@@ -26,12 +27,14 @@ export function Trading() {
   const [coinId, setCoinId] = useState(PRESET_ASSETS[0].coinId)
   const [platformId, setPlatformId] = useState(CHAINS[0].platformId)
   const [address, setAddress] = useState('')
+  const [currency, setCurrency] = useState(QUOTE_CURRENCIES[0].code)
   const [days, setDays] = useState(7)
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [idea, setIdea] = useState<TradeIdea | null>(null)
   const [assetLabel, setAssetLabel] = useState('')
+  const [currencySymbol, setCurrencySymbol] = useState(QUOTE_CURRENCIES[0].symbol)
   const [saved, setSaved] = useState(false)
 
   const [history, setHistory] = useState(getTradeSignals())
@@ -53,11 +56,12 @@ export function Trading() {
 
       const points =
         mode === 'preset'
-          ? await fetchPriceHistoryByCoin(coinId, days)
-          : await fetchPriceHistoryByContract(platformId, address, days)
+          ? await fetchPriceHistoryByCoin(coinId, currency, days)
+          : await fetchPriceHistoryByContract(platformId, address, currency, days)
 
       const prices = points.map((p) => p.price)
       setAssetLabel(label)
+      setCurrencySymbol(QUOTE_CURRENCIES.find((c) => c.code === currency)?.symbol ?? '')
       setIdea(buildTradeIdea(prices))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Onbekende fout bij het ophalen van koersdata.')
@@ -70,6 +74,7 @@ export function Trading() {
     if (!idea) return
     addTradeSignal({
       asset_label: assetLabel,
+      currency_symbol: currencySymbol,
       signal: idea.signal,
       price: idea.price,
       stop_loss: idea.stopLoss,
@@ -160,6 +165,26 @@ export function Trading() {
           </div>
         )}
 
+        <select
+          value={currency}
+          onChange={(e) => setCurrency(e.target.value)}
+          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+        >
+          {QUOTE_CURRENCIES.map((c) => (
+            <option key={c.code} value={c.code}>
+              Prijs in {c.label}
+            </option>
+          ))}
+        </select>
+
+        {currency === 'aud' && (
+          <p className="rounded-lg bg-amber-50 p-2.5 text-xs text-amber-800">
+            Let op: dit toont crypto-koersen omgerekend naar AUD, geen gehefboomde forex-handel. Voor
+            echte on-chain AUD-blootstelling swap je meestal tegen een AUD-stablecoin (bv. AUDD) op een
+            DEX — check eerst de liquiditeit, die is vaak dun.
+          </p>
+        )}
+
         <div className="flex gap-2">
           {PERIODS.map((p) => (
             <button
@@ -193,7 +218,11 @@ export function Trading() {
             <div>
               <p className="text-sm text-neutral-500">{assetLabel}</p>
               <p className="text-sm text-neutral-500">
-                Huidige prijs: <span className="font-medium text-neutral-900">${fmt(idea.price)}</span>
+                Huidige prijs:{' '}
+                <span className="font-medium text-neutral-900">
+                  {currencySymbol}
+                  {fmt(idea.price)}
+                </span>
               </p>
             </div>
             <span className={`rounded-lg border px-3 py-1.5 text-sm font-semibold ${SIGNAL_STYLES[idea.signal]}`}>
@@ -205,15 +234,24 @@ export function Trading() {
             <div className="grid grid-cols-3 gap-2 text-center text-sm">
               <div className="rounded-lg bg-neutral-50 p-2">
                 <p className="text-xs text-neutral-400">Entry</p>
-                <p className="font-medium text-neutral-900">${fmt(idea.price)}</p>
+                <p className="font-medium text-neutral-900">
+                  {currencySymbol}
+                  {fmt(idea.price)}
+                </p>
               </div>
               <div className="rounded-lg bg-neutral-50 p-2">
                 <p className="text-xs text-neutral-400">Stop-loss</p>
-                <p className="font-medium text-red-600">${fmt(idea.stopLoss!)}</p>
+                <p className="font-medium text-red-600">
+                  {currencySymbol}
+                  {fmt(idea.stopLoss!)}
+                </p>
               </div>
               <div className="rounded-lg bg-neutral-50 p-2">
                 <p className="text-xs text-neutral-400">Take-profit</p>
-                <p className="font-medium text-green-600">${fmt(idea.takeProfit!)}</p>
+                <p className="font-medium text-green-600">
+                  {currencySymbol}
+                  {fmt(idea.takeProfit!)}
+                </p>
               </div>
             </div>
           )}
@@ -289,9 +327,10 @@ export function Trading() {
                   <span className="text-xs text-neutral-400">{new Date(s.created_at).toLocaleString('nl-NL')}</span>
                 </div>
                 <p className="mt-1 text-neutral-500">
-                  Entry ${fmt(s.price)}
-                  {s.stop_loss !== null && ` · SL $${fmt(s.stop_loss)}`}
-                  {s.take_profit !== null && ` · TP $${fmt(s.take_profit)}`}
+                  Entry {s.currency_symbol}
+                  {fmt(s.price)}
+                  {s.stop_loss !== null && ` · SL ${s.currency_symbol}${fmt(s.stop_loss)}`}
+                  {s.take_profit !== null && ` · TP ${s.currency_symbol}${fmt(s.take_profit)}`}
                 </p>
                 <div className="mt-2 flex items-center gap-2">
                   {(['open', 'winst', 'verlies'] as TradeOutcome[]).map((o) => (
