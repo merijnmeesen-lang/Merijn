@@ -23,3 +23,19 @@ export interface WasteLog {
   logged_by: string
   logged_at: string
 }
+
+export type TradeSignalType = 'KOPEN' | 'VERKOPEN' | 'AFWACHTEN'
+export type TradeOutcome = 'open' | 'winst' | 'verlies'
+
+export interface TradeSignal {
+  id: string
+  asset_label: string
+  currency_symbol: string
+  signal: TradeSignalType
+  price: number
+  stop_loss: number | null
+  take_profit: number | null
+  reasons: string[]
+  outcome: TradeOutcome
+  created_at: string
+}

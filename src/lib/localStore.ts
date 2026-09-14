@@ -1,9 +1,11 @@
-import type { Product, StockCount, WasteLog } from './types'
+import type { Product, StockCount, TradeOutcome, TradeSignal, WasteLog } from './types'
 
 const KEYS = {
   products: 'voorraad-app:products',
   stockCounts: 'voorraad-app:stock_counts',
   wasteLogs: 'voorraad-app:waste_logs',
+  tradeSignals: 'voorraad-app:trade_signals',
+  riskSettings: 'voorraad-app:risk_settings',
 }
 
 function read<T>(key: string): T[] {
@@ -79,4 +81,56 @@ export function addWasteLog(input: Omit<WasteLog, 'id' | 'logged_at'>): WasteLog
   const row: WasteLog = { id: crypto.randomUUID(), logged_at: new Date().toISOString(), ...input }
   write(KEYS.wasteLogs, [...read<WasteLog>(KEYS.wasteLogs), row])
   return row
+}
+
+export function getTradeSignals(): TradeSignal[] {
+  return read<TradeSignal>(KEYS.tradeSignals).sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  )
+}
+
+export function addTradeSignal(input: Omit<TradeSignal, 'id' | 'created_at' | 'outcome'>): TradeSignal {
+  const row: TradeSignal = {
+    id: crypto.randomUUID(),
+    created_at: new Date().toISOString(),
+    outcome: 'open',
+    ...input,
+  }
+  write(KEYS.tradeSignals, [...read<TradeSignal>(KEYS.tradeSignals), row])
+  return row
+}
+
+export function setTradeSignalOutcome(id: string, outcome: TradeOutcome) {
+  write(
+    KEYS.tradeSignals,
+    read<TradeSignal>(KEYS.tradeSignals).map((s) => (s.id === id ? { ...s, outcome } : s)),
+  )
+}
+
+export function deleteTradeSignal(id: string) {
+  write(KEYS.tradeSignals, read<TradeSignal>(KEYS.tradeSignals).filter((s) => s.id !== id))
+}
+
+export interface RiskSettings {
+  accountSize: number
+  riskPct: number
+}
+
+const DEFAULT_RISK_SETTINGS: RiskSettings = { accountSize: 10000, riskPct: 1 }
+
+export function getRiskSettings(): RiskSettings {
+  try {
+    const raw = localStorage.getItem(KEYS.riskSettings)
+    return raw ? { ...DEFAULT_RISK_SETTINGS, ...(JSON.parse(raw) as Partial<RiskSettings>) } : DEFAULT_RISK_SETTINGS
+  } catch {
+    return DEFAULT_RISK_SETTINGS
+  }
+}
+
+export function setRiskSettings(settings: RiskSettings) {
+  try {
+    localStorage.setItem(KEYS.riskSettings, JSON.stringify(settings))
+  } catch {
+    // localStorage unavailable — setting is dropped, defaults apply next load.
+  }
 }

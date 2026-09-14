@@ -6,6 +6,7 @@ const links = [
   { to: '/derving', label: 'Derving' },
   { to: '/overzicht', label: 'Overzicht' },
   { to: '/producten', label: 'Producten' },
+  { to: '/trading', label: 'Trading' },
 ]
 
 export function AppLayout({ children }: { children: ReactNode }) {
