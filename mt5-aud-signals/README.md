@@ -49,6 +49,28 @@ Alle periodes en multipliers zijn instelbaar in [`config.yaml`](./config.yaml).
 
 ## Gebruik
 
+### 1. Connectie testen (aanbevolen bij eerste gebruik)
+
+Voordat je de volledige analyse draait, kun je controleren of de live
+MT5-koppeling werkt en of al je geconfigureerde symbolen bestaan bij je
+broker:
+
+```bash
+python check_connection.py
+```
+
+Dit plaatst geen orders en wijzigt niets — het meldt alleen of de terminal
+bereikbaar is (naam, account, server) en per paar of het symbool gevonden
+wordt met een geldige bid/ask-prijs. Zie je een foutmelding, controleer dan:
+
+- staat de MT5-terminal open en ben je ingelogd?
+- is het `MetaTrader5`-package geinstalleerd (`pip install -r requirements.txt`)?
+- draait je Python-installatie met dezelfde architectuur (64-bit) als de terminal?
+- gebruikt jouw broker een suffix in de symboolnamen (bv. `AUDUSD.a`)? Pas dan
+  `pairs` in `config.yaml` aan naar de exacte namen uit het Market Watch-venster.
+
+### 2. Analyse draaien
+
 ```bash
 python analyze.py
 ```
@@ -125,6 +147,7 @@ ruff check .
 ```
 mt5-aud-signals/
 ├── analyze.py              # entrypoint: haalt data op, print het rapport
+├── check_connection.py      # test de live MT5-koppeling (read-only)
 ├── config.yaml              # instelbare strategie-parameters
 ├── requirements.txt
 ├── requirements-dev.txt
