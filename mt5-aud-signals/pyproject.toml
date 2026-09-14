@@ -1,0 +1,15 @@
+[project]
+name = "mt5-aud-signals"
+version = "0.1.0"
+description = "Read-only AUD-handelssignalen tool voor MT5 (advies, plaatst nooit orders)"
+requires-python = ">=3.10"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

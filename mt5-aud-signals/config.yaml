@@ -1,0 +1,35 @@
+# Configuratie voor de AUD-signalentool.
+# Pas deze waarden aan om de strategie te finetunen zonder de code te wijzigen.
+
+# Valutaparen die geanalyseerd worden (MT5-symboolnamen; kunnen per broker
+# een suffix hebben, bv. "AUDUSD.a" -- pas dan deze lijst aan).
+pairs:
+  - AUDUSD
+  - AUDJPY
+  - AUDNZD
+  - AUDCAD
+  - AUDCHF
+  - EURAUD
+  - GBPAUD
+
+# MT5-timeframe voor de analyse: M1, M5, M15, M30, H1, H4, D1
+timeframe: H1
+
+# Aantal candles dat opgehaald wordt (moet ruim boven ema_slow liggen)
+bars_count: 300
+
+# Trendfilter (EMA-crossover)
+ema_fast: 50
+ema_slow: 200
+
+# Momentum-indicator (RSI)
+rsi_period: 14
+rsi_buy_threshold: 50.0
+rsi_sell_threshold: 50.0
+
+# Stoploss op basis van ATR
+atr_period: 14
+atr_multiplier: 1.5
+
+# Take-profit als veelvoud van het risico (risk/reward)
+rr_ratio: 2.0

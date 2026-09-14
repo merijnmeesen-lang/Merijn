@@ -1,0 +1,7 @@
+pandas>=2.0.0
+numpy>=1.24.0
+PyYAML>=6.0
+
+# Alleen nodig voor een live verbinding met een MT5-terminal (Windows-only).
+# Zonder dit package valt de tool automatisch terug op demo-data.
+MetaTrader5>=5.0.45
