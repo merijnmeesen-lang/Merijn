@@ -50,7 +50,12 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
         elif self.path == "/api/staat":
-            self._json({"meldingen": inbox.meldingen(5), "voorstellen": inbox.alle(), "telling": inbox.telling()})
+            cfg_talen = productie.config().get("talen", {})
+            self._json({
+                "meldingen": inbox.meldingen(5), "voorstellen": inbox.alle(), "telling": inbox.telling(),
+                "talen": {k: v.get("label", k) for k, v in cfg_talen.items()},
+                "accounts": {k: v.get("account", "") for k, v in cfg_talen.items()},
+            })
         elif self.path.startswith("/video/"):
             self._video(self.path[len("/video/"):].split("?")[0])
         else:

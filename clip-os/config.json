@@ -1,6 +1,17 @@
 {
-  "max_nieuwe_bronnen_per_dag": 2,
   "max_ideeen_per_bron": 6,
   "whisper_model": "small",
-  "dashboard_poort": 8765
+  "dashboard_poort": 8765,
+  "talen": {
+    "en": {
+      "label": "🇬🇧 Engels",
+      "account": "je Engelse YouTube-kanaal",
+      "max_nieuwe_bronnen_per_dag": 1
+    },
+    "nl": {
+      "label": "🇳🇱 Nederlands",
+      "account": "je Nederlandse YouTube-kanaal",
+      "max_nieuwe_bronnen_per_dag": 1
+    }
+  }
 }

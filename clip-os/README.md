@@ -26,7 +26,7 @@ Elke ochtend (automatisch)                 Jij (±10 min per dag)
 |---|---|
 | **Code** (`clipos/kostenwacht.py`) | Elk commando stopt direct als er een betaalde sleutel is (zoals `ANTHROPIC_API_KEY`). Clip-OS kan alleen verbinden met sites in `toegestane_sites.txt`. Betaalde AI-diensten staan op een zwarte lijst die niet uit te zetten is. |
 | **Claude Code** (`.claude/hooks`) | Blokkeert elk commando dat een betaalde dienst aanroept, een betaalde SDK installeert of een API-sleutel zet. |
-| **Dagelijkse run** | Wist betaalde sleutels vóór het starten, controleert de kostenwacht, en begrenst Claude (`--max-turns 80`, maximaal 2 nieuwe video's per dag). |
+| **Dagelijkse run** | Wist betaalde sleutels vóór het starten, controleert de kostenwacht, en begrenst Claude (`--max-turns 80`, standaard 1 nieuwe bronvideo per taal per dag). |
 | **Tests** | `pytest` faalt zodra iemand een betaalde dienst in de code zet. |
 
 **Twee dingen die alleen jij kunt instellen (één keer):**
@@ -83,18 +83,28 @@ Claude maakt er een brief van in `briefs/`, met lengte, hashtags, taal en de bro
 ```
 briefs/        campagne-eisen (één .json per campagne)
 jobs/          werkmap per bronvideo (download, transcript, clips.json)
-output/        KLAAR OM TE PLAATSEN: video.mp4 + PLAATSEN.md per clip
+output/en/     KLAAR OM TE PLAATSEN (Engels): video.mp4 + PLAATSEN.md per clip
+output/nl/     KLAAR OM TE PLAATSEN (Nederlands)
 data/          inbox, meldingen, logboek
-lessenboek.md  wat werkt, wat niet (houdt de Analist bij)
-config.json    maximum per dag, spraakmodel, poort
+lessenboek.md  wat werkt, wat niet, per taal (houdt de Analist bij)
+config.json    talen + accounts + daglimiet per taal, spraakmodel, poort
 ```
 
-## 🌍 Taal
+## 🌍 Twee talen: Engels én Nederlands
 
-De video krijgt altijd de taal van de bron: een Engelse podcast wordt een Engelse clip, met Engelse ondertitels, hook, titel en hashtags. Het dashboard en de meldingen aan jou blijven Nederlands.
-- **Engels** (Vyro, Whop): de meeste campagnes en de hoogste tarieven. Zie `briefs/voorbeeld-engels.json`.
-- **Nederlands** (ClipArmy, Klippie, ClipHub): minder campagnes en lagere tarieven, maar ook weinig concurrentie. Zie `briefs/voorbeeld.json`.
-- Gebruik **per taal een apart account** op YouTube en TikTok. Het algoritme moet snappen voor wie je kanaal is.
+Clip-OS maakt Engelse en Nederlandse video's naast elkaar. De taal komt uit de campagne-brief (`"taal": "en"` of `"nl"`). Een Engelse bron krijgt Engelse ondertitels, hook, titel en hashtags, een Nederlandse bron krijgt Nederlandse. Het dashboard en de meldingen aan jou blijven Nederlands.
+
+| | 🇬🇧 Engels | 🇳🇱 Nederlands |
+|---|---|---|
+| Plaatsen op | je Engelse YouTube-kanaal (+ Vyro/Whop) | je Nederlandse YouTube-kanaal (+ ClipArmy/Klippie) |
+| Voorbeeldbrief | `briefs/voorbeeld-engels.json` | `briefs/voorbeeld.json` |
+| Output-map | `output/en/…` | `output/nl/…` |
+
+- **Elke dag allebei:** in `config.json` → `talen` heeft elke taal een eigen daglimiet (standaard 1 nieuwe bronvideo per taal per dag), zodat de ene taal de andere niet verdringt. Daar zet je ook de naam van je account per taal neer. Die staat dan bij elke video ("📍 Plaats op: …").
+- **Dashboard:** elke kaart heeft een taalbadge. Met de taalknoppen filter je op 🇬🇧 of 🇳🇱.
+- **Leren per taal:** de Analist houdt de lessen voor Engels en Nederlands apart bij.
+- Gebruik **per taal een apart YouTube- en TikTok-account**. Het algoritme moet snappen voor wie je kanaal is.
+- Een Engelse campagne zonder clipplatform (alleen je eigen kanaal)? Laat `platform` leeg in de brief. Dan slaat de checklist de indienstap over.
 
 ## ⚠️ Goed om te weten
 

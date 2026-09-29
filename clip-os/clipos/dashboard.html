@@ -26,10 +26,11 @@
   nav button { border: 1px solid var(--lijn); background: var(--kaart); color: var(--tekst); border-radius: 999px;
                padding: 6px 12px; cursor: pointer; font: inherit; }
   nav button.aan { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .raster { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+  .raster { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); gap: 12px; }
   .kaart { background: var(--kaart); border: 1px solid var(--lijn); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
-  .kop { display: flex; justify-content: space-between; gap: 8px; color: var(--zacht); font-size: 12px; }
-  .badge { background: var(--badge); border-radius: 6px; padding: 1px 7px; color: var(--tekst); white-space: nowrap; }
+  .kop { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 6px 8px; color: var(--zacht); font-size: 12px; }
+  .kop > span:first-child { flex: 1 1 140px; min-width: 0; overflow-wrap: anywhere; }
+  .badge { background: var(--badge); border-radius: 6px; padding: 1px 7px; color: var(--tekst); white-space: nowrap; flex-shrink: 0; }
   .hook { font-weight: 700; font-size: 17px; }
   .citaat { color: var(--zacht); font-style: italic; font-size: 13px; }
   label { font-size: 12px; color: var(--zacht); }
@@ -54,6 +55,7 @@
 <main>
   <div id="meldingen"></div>
   <nav id="tabs"></nav>
+  <nav id="taalfilter"></nav>
   <div id="lijst" class="raster"></div>
 </main>
 <script>
@@ -61,10 +63,13 @@ const TABS = [
   ["idee", "💡 Nieuwe ideeën"], ["bezig", "⚙️ Wordt gemaakt"], ["klaar", "✅ Klaar om te plaatsen"],
   ["geplaatst", "📈 Geplaatst"], ["afgewezen", "🗑️ Afgewezen"], ["fout", "⚠️ Fout"],
 ];
-let tab = "idee", staat = null, bewerkt = false;
+const [hTab, hTaal] = location.hash.slice(1).split("/");  // bijv. #klaar/en als bladwijzer
+let tab = TABS.some(t => t[0] === hTab) ? hTab : "idee", taal = hTaal || "alle", staat = null, bewerkt = false;
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const inTab = v => tab === "bezig" ? ["akkoord", "bezig"].includes(v.status) : v.status === tab;
+const inTaal = v => taal === "alle" || (v.taal || "?") === taal;
+const inTab = v => inTaal(v) && (tab === "bezig" ? ["akkoord", "bezig"].includes(v.status) : v.status === tab);
+const taalLabel = t => (staat.talen || {})[t] || (t ? t.toUpperCase() : "?");
 const ytTitel = t => /#shorts/i.test(t) || t.length > 90 ? t : t + " #Shorts";
 const beschrijving = v => ((v.beschrijving || "").trim() + ((v.hashtags || []).length ? "\n\n" + v.hashtags.join(" ") : "")).trim();
 
@@ -77,15 +82,19 @@ async function laad() {
   document.getElementById("meldingen").innerHTML = staat.meldingen.slice(0, 2).map(m =>
     `<div class="melding"><small>${esc(m.tijd.replace("T", " "))} · bericht van Claude</small>${esc(m.tekst)}</div>`).join("");
   document.getElementById("tabs").innerHTML = TABS.map(([k, n]) => {
-    const aantal = k === "bezig" ? t.akkoord + t.bezig : t[k];
+    const statussen = k === "bezig" ? ["akkoord", "bezig"] : [k];
+    const aantal = staat.voorstellen.filter(v => inTaal(v) && statussen.includes(v.status)).length;
     return `<button class="${k === tab ? "aan" : ""}" onclick="kies('${k}')">${n} (${aantal})</button>`;
   }).join("");
+  const talen = [...new Set([...Object.keys(staat.talen || {}), ...staat.voorstellen.map(v => v.taal || "?")])];
+  document.getElementById("taalfilter").innerHTML = [["alle", "🌍 Alle talen"], ...talen.map(x => [x, taalLabel(x)])].map(([k, n]) =>
+    `<button class="${k === taal ? "aan" : ""}" onclick="kiesTaal('${esc(k)}')">${esc(n)}</button>`).join("");
   const lijst = staat.voorstellen.filter(inTab).sort((a, b) => (b.score || 0) - (a.score || 0));
   document.getElementById("lijst").innerHTML = lijst.length ? lijst.map(kaart).join("") : `<div class="leeg">Niets hier.</div>`;
 }
 
 function kaart(v) {
-  const kop = `<div class="kop"><span>${esc(v.bron_titel)}</span><span class="badge">${v.score ? "score " + esc(v.score) + " · " : ""}${esc(v.duur)}s</span></div>`;
+  const kop = `<div class="kop"><span>${esc(v.bron_titel)}</span><span class="badge">${esc(taalLabel(v.taal))} · ${v.score ? "score " + esc(v.score) + " · " : ""}${esc(v.duur)}s</span></div>`;
   if (v.status === "idee") return `<div class="kaart">${kop}
     <label>Hook (bovenin beeld, eerste 3 sec)</label><input id="hook-${v.id}" value="${esc(v.hook)}" oninput="bewerkt=true">
     <label>Titel</label><input id="titel-${v.id}" value="${esc(v.titel)}" oninput="bewerkt=true">
@@ -96,6 +105,7 @@ function kaart(v) {
   if (["akkoord", "bezig"].includes(v.status)) return `<div class="kaart">${kop}<div class="hook">${esc(v.hook)}</div>
     <div class="ctrl">${v.status === "bezig" ? "Video wordt nu gemaakt…" : "In de wachtrij…"}</div></div>`;
   if (v.status === "klaar") return `<div class="kaart">${kop}
+    <div class="hook">📍 Plaats op: ${esc((staat.accounts || {})[v.taal] || "je YouTube-kanaal")}</div>
     <video controls preload="metadata" src="/video/${encodeURIComponent(v.id)}"></video>
     ${v.controle_ok ? `<div class="ctrl">✅ Alle controles geslaagd</div>` :
       `<div class="fout">${(v.controle || []).filter(c => !c[0]).map(c => "❌ " + esc(c[1])).join("\n")}</div>`}
@@ -127,6 +137,7 @@ const akkoord = id => actie("akkoord", id, {hook: val("hook", id), titel: val("t
 const geplaatst = id => actie("geplaatst", id, {link: val("link", id)});
 const views = id => actie("views", id, {views: val("views", id)});
 function kies(k) { tab = k; bewerkt = false; laad(); }
+function kiesTaal(k) { taal = k; bewerkt = false; laad(); }
 function kopieer(el) { el.select(); navigator.clipboard?.writeText(el.value); el.style.outline = "2px solid var(--ok)"; setTimeout(() => el.style.outline = "", 600); }
 
 laad(); setInterval(laad, 4000);

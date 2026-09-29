@@ -17,8 +17,8 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("bron"); s.add_argument("--brief"); s.add_argument("--naam")
     s = sub.add_parser("transcribeer", help="spraak → tekst met tijd per woord (lokaal)")
     s.add_argument("job"); s.add_argument("--model"); s.add_argument("--taal")
-    s = sub.add_parser("dag", help="dagelijkse scout: nieuwe video's ophalen + transcriberen")
-    s.add_argument("--max", type=int)
+    s = sub.add_parser("dag", help="dagelijkse scout: nieuwe video's ophalen + transcriberen (per taal)")
+    s.add_argument("--max", type=int, help="maximum nieuwe video's per taal (standaard: config.json)")
     sub.add_parser("te-doen", help="jobs die nog ideeën nodig hebben")
     s = sub.add_parser("check-ideeen", help="controleer clips.json zonder te registreren")
     s.add_argument("job")
@@ -83,6 +83,12 @@ def main(argv: list[str] | None = None) -> int:
     elif a.cmd == "status":
         t = inbox.telling()
         print(" · ".join(f"{k}: {n}" for k, n in t.items()))
+        alle = inbox.alle()
+        for taal in sorted({v.get("taal") or "?" for v in alle}):
+            van_taal = [v for v in alle if (v.get("taal") or "?") == taal]
+            ideeen = sum(v.get("status") == "idee" for v in van_taal)
+            klaar = sum(v.get("status") == "klaar" for v in van_taal)
+            print(f"  {productie.taal_info(taal)['label']}: {ideeen} ideeën, {klaar} klaar om te plaatsen")
         for m in inbox.meldingen(1):
             print(f"Laatste melding ({m['tijd']}): {m['tekst']}")
     elif a.cmd == "frames":
@@ -97,9 +103,9 @@ def main(argv: list[str] | None = None) -> int:
         print("Notitie opgeslagen.")
     elif a.cmd == "resultaten":
         rijen = [v for v in inbox.alle() if v.get("status") == "geplaatst"]
-        print("views\tduur\tscore\tbrief\thook\ttitel")
+        print("views\ttaal\tduur\tscore\tbrief\thook\ttitel")
         for v in sorted(rijen, key=lambda v: -(v.get("views") or 0)):
-            print(f"{v.get('views', '?')}\t{v.get('duur')}\t{v.get('score')}\t{v.get('brief')}\t{v.get('hook')}\t{v.get('titel')}")
+            print(f"{v.get('views', '?')}\t{v.get('taal')}\t{v.get('duur')}\t{v.get('score')}\t{v.get('brief')}\t{v.get('hook')}\t{v.get('titel')}")
         afgewezen = [v for v in inbox.alle() if v.get("status") == "afgewezen"]
         if afgewezen:
             print("\nDoor jou afgewezen ideeën (hook | reden):")

@@ -8,6 +8,12 @@ De Analist houdt dit bij. De Hook-jager en Copywriter lezen het vóór elke keuz
 ## Wat niet werkt
 - (nog te weinig data)
 
+## 🇬🇧 Alleen Engels
+- (nog te weinig data)
+
+## 🇳🇱 Alleen Nederlands
+- (nog te weinig data)
+
 ## Voorkeuren van de eigenaar (uit afgewezen ideeën)
 - (nog niets)
 

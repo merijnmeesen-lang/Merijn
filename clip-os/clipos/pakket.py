@@ -17,9 +17,11 @@ def beschrijving_met_tags(voorstel: dict) -> str:
     return (voorstel.get("beschrijving", "").strip() + ("\n\n" + tags if tags else "")).strip()
 
 
-def maak_pakket(job_dir: Path, voorstel: dict, brief: dict, controle: list[tuple[bool, str]]) -> Path:
+def maak_pakket(job_dir: Path, voorstel: dict, brief: dict, controle: list[tuple[bool, str]], taal: dict) -> Path:
+    """taal: uitkomst van productie.taal_info() (label + doel-account)."""
     job = job_dir.name
-    doel = werk.OUTPUT / job / f"{voorstel['clip_id']}-{werk.slug(voorstel.get('titel', 'clip'))}"
+    taalmap = voorstel.get("taal") or "onbekend"
+    doel = werk.OUTPUT / taalmap / job / f"{voorstel['clip_id']}-{werk.slug(voorstel.get('titel', 'clip'))}"
     doel.mkdir(parents=True, exist_ok=True)
     shutil.copy2(job_dir / "clips" / voorstel["clip_id"] / "video.mp4", doel / "video.mp4")
 
@@ -27,10 +29,12 @@ def maak_pakket(job_dir: Path, voorstel: dict, brief: dict, controle: list[tuple
     if (job_dir / "bron_info.json").exists():
         bron_info = werk.lees_json(job_dir / "bron_info.json")
     render = werk.lees_json(job_dir / "clips" / voorstel["clip_id"] / "render.json")
-    platform = brief.get("platform") or "clip-platform (bijv. ClipArmy)"
+    platform = brief.get("platform")
 
     regels = [
         f"# {voorstel.get('titel', '')}",
+        "",
+        f"**Taal:** {taal['label']}  ·  **Plaats op:** {taal['account']}",
         "",
         "## 1. YouTube Shorts",
         "**Titel** (kopiëren):",
@@ -43,16 +47,21 @@ def maak_pakket(job_dir: Path, voorstel: dict, brief: dict, controle: list[tuple
         "- [ ] 'Gewijzigde of synthetische content': **Nee** (echte beelden; alleen ondertitels toegevoegd)",
         "- [ ] Publiceren en de link kopiëren",
         "",
-        f"## 2. {platform}",
-        f"Campagne: **{brief.get('naam')}**" + (f" · {brief['cpm']}" if brief.get("cpm") else ""),
-        "- [ ] Log in, open de campagne en dien de YouTube-link in",
     ]
-    if brief.get("indienen"):
-        regels.append(f"- [ ] Let op: {brief['indienen']}")
-    if brief.get("verplichte_hashtags"):
-        regels.append("- [ ] Verplichte hashtags staan erin: " + " ".join(brief["verplichte_hashtags"]))
+    if platform:
+        regels += [
+            f"## 2. {platform}",
+            f"Campagne: **{brief.get('naam')}**" + (f" · {brief['cpm']}" if brief.get("cpm") else ""),
+            "- [ ] Log in, open de campagne en dien de YouTube-link in",
+        ]
+        if brief.get("indienen"):
+            regels.append(f"- [ ] Let op: {brief['indienen']}")
+        if brief.get("verplichte_hashtags"):
+            regels.append("- [ ] Verplichte hashtags staan erin: " + " ".join(brief["verplichte_hashtags"]))
+        regels.append("")
     regels += [
-        "- [ ] In het dashboard op **Geplaatst** klikken (en later de views invullen)",
+        "## Afronden",
+        "- [ ] In het dashboard op **Geplaatst** klikken (en na 1-3 dagen de views invullen)",
         "",
         "## Controle",
         *[("✅ " if ok else "❌ ") + t for ok, t in controle],
