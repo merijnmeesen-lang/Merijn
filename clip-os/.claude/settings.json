@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m clipos:*)",
+      "Bash(python3 -m clipos:*)"
+    ],
+    "deny": [
+      "Bash(pip install anthropic:*)",
+      "Bash(pip install openai:*)",
+      "Bash(npm install @anthropic-ai/sdk:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PY=$(command -v python3 || command -v python); \"$PY\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/kostenwacht_hook.py\""
+          }
+        ]
+      }
+    ]
+  }
+}

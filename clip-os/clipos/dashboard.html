@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clip-OS</title>
+<style>
+  :root {
+    --bg: #f6f6f4; --kaart: #ffffff; --tekst: #1b1b1a; --zacht: #6b6b66; --lijn: #e3e2de;
+    --accent: #1f6feb; --ok: #1a7f37; --nee: #c9302c; --geel: #9a6700; --badge: #eef2ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151515; --kaart: #1f1f1e; --tekst: #ececea; --zacht: #a3a39e; --lijn: #33332f;
+            --accent: #5b9bff; --ok: #3fb950; --nee: #f0625d; --geel: #d4a72c; --badge: #25283a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--tekst); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { padding: 20px 16px 8px; max-width: 1100px; margin: 0 auto; }
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  .sub { color: var(--zacht); font-size: 13px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 0 16px 60px; }
+  .melding { background: var(--kaart); border: 1px solid var(--lijn); border-left: 4px solid var(--accent);
+             border-radius: 10px; padding: 12px 14px; margin: 12px 0; white-space: pre-wrap; }
+  .melding small { color: var(--zacht); display: block; margin-bottom: 4px; }
+  nav { display: flex; gap: 6px; flex-wrap: wrap; margin: 16px 0; }
+  nav button { border: 1px solid var(--lijn); background: var(--kaart); color: var(--tekst); border-radius: 999px;
+               padding: 6px 12px; cursor: pointer; font: inherit; }
+  nav button.aan { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .raster { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+  .kaart { background: var(--kaart); border: 1px solid var(--lijn); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .kop { display: flex; justify-content: space-between; gap: 8px; color: var(--zacht); font-size: 12px; }
+  .badge { background: var(--badge); border-radius: 6px; padding: 1px 7px; color: var(--tekst); white-space: nowrap; }
+  .hook { font-weight: 700; font-size: 17px; }
+  .citaat { color: var(--zacht); font-style: italic; font-size: 13px; }
+  label { font-size: 12px; color: var(--zacht); }
+  input, textarea { width: 100%; font: inherit; color: var(--tekst); background: var(--bg); border: 1px solid var(--lijn); border-radius: 8px; padding: 7px 9px; }
+  textarea { min-height: 84px; resize: vertical; }
+  .knoppen { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; }
+  .knop { border: 0; border-radius: 8px; padding: 8px 14px; font: inherit; font-weight: 600; cursor: pointer; }
+  .ja { background: var(--ok); color: #fff; } .nee { background: transparent; color: var(--nee); border: 1px solid var(--nee); }
+  .gewoon { background: var(--badge); color: var(--tekst); }
+  video { width: 100%; max-height: 520px; background: #000; border-radius: 8px; }
+  .fout { color: var(--nee); font-size: 13px; white-space: pre-wrap; }
+  .ctrl { font-size: 12px; color: var(--zacht); }
+  .leeg { color: var(--zacht); padding: 30px 0; text-align: center; }
+  code { font-size: 12px; word-break: break-all; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎬 Clip-OS</h1>
+  <div class="sub" id="telling">laden…</div>
+</header>
+<main>
+  <div id="meldingen"></div>
+  <nav id="tabs"></nav>
+  <div id="lijst" class="raster"></div>
+</main>
+<script>
+const TABS = [
+  ["idee", "💡 Nieuwe ideeën"], ["bezig", "⚙️ Wordt gemaakt"], ["klaar", "✅ Klaar om te plaatsen"],
+  ["geplaatst", "📈 Geplaatst"], ["afgewezen", "🗑️ Afgewezen"], ["fout", "⚠️ Fout"],
+];
+let tab = "idee", staat = null, bewerkt = false;
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const inTab = v => tab === "bezig" ? ["akkoord", "bezig"].includes(v.status) : v.status === tab;
+const ytTitel = t => /#shorts/i.test(t) || t.length > 90 ? t : t + " #Shorts";
+const beschrijving = v => ((v.beschrijving || "").trim() + ((v.hashtags || []).length ? "\n\n" + v.hashtags.join(" ") : "")).trim();
+
+async function laad() {
+  if (bewerkt) return;
+  staat = await (await fetch("/api/staat")).json();
+  const t = staat.telling;
+  document.getElementById("telling").textContent =
+    `${t.idee} ideeën wachten op akkoord · ${t.akkoord + t.bezig} worden gemaakt · ${t.klaar} klaar om te plaatsen · ${t.geplaatst} geplaatst`;
+  document.getElementById("meldingen").innerHTML = staat.meldingen.slice(0, 2).map(m =>
+    `<div class="melding"><small>${esc(m.tijd.replace("T", " "))} · bericht van Claude</small>${esc(m.tekst)}</div>`).join("");
+  document.getElementById("tabs").innerHTML = TABS.map(([k, n]) => {
+    const aantal = k === "bezig" ? t.akkoord + t.bezig : t[k];
+    return `<button class="${k === tab ? "aan" : ""}" onclick="kies('${k}')">${n} (${aantal})</button>`;
+  }).join("");
+  const lijst = staat.voorstellen.filter(inTab).sort((a, b) => (b.score || 0) - (a.score || 0));
+  document.getElementById("lijst").innerHTML = lijst.length ? lijst.map(kaart).join("") : `<div class="leeg">Niets hier.</div>`;
+}
+
+function kaart(v) {
+  const kop = `<div class="kop"><span>${esc(v.bron_titel)}</span><span class="badge">${v.score ? "score " + esc(v.score) + " · " : ""}${esc(v.duur)}s</span></div>`;
+  if (v.status === "idee") return `<div class="kaart">${kop}
+    <label>Hook (bovenin beeld, eerste 3 sec)</label><input id="hook-${v.id}" value="${esc(v.hook)}" oninput="bewerkt=true">
+    <label>Titel</label><input id="titel-${v.id}" value="${esc(v.titel)}" oninput="bewerkt=true">
+    ${v.citaat ? `<div class="citaat">“${esc(v.citaat)}”</div>` : ""}
+    <div class="ctrl">Waarom: ${esc(v.reden)}</div>
+    <div class="knoppen"><button class="knop ja" onclick="akkoord('${v.id}')">Akkoord, maak video</button>
+    <button class="knop nee" onclick="actie('afwijzen','${v.id}')">Afwijzen</button></div></div>`;
+  if (["akkoord", "bezig"].includes(v.status)) return `<div class="kaart">${kop}<div class="hook">${esc(v.hook)}</div>
+    <div class="ctrl">${v.status === "bezig" ? "Video wordt nu gemaakt…" : "In de wachtrij…"}</div></div>`;
+  if (v.status === "klaar") return `<div class="kaart">${kop}
+    <video controls preload="metadata" src="/video/${encodeURIComponent(v.id)}"></video>
+    ${v.controle_ok ? `<div class="ctrl">✅ Alle controles geslaagd</div>` :
+      `<div class="fout">${(v.controle || []).filter(c => !c[0]).map(c => "❌ " + esc(c[1])).join("\n")}</div>`}
+    ${v.notitie ? `<div class="ctrl">📝 Controleur: ${esc(v.notitie)}</div>` : ""}
+    <label>YouTube-titel</label><input readonly value="${esc(ytTitel(v.titel))}" onclick="kopieer(this)">
+    <label>Beschrijving + hashtags (klik = kopiëren)</label><textarea readonly onclick="kopieer(this)">${esc(beschrijving(v))}</textarea>
+    <div class="ctrl">Map: <code>${esc(v.map)}</code> (met PLAATSEN.md)</div>
+    <label>Link na plaatsen (optioneel)</label><input id="link-${v.id}" placeholder="https://youtube.com/shorts/…" oninput="bewerkt=true">
+    <div class="knoppen"><button class="knop ja" onclick="geplaatst('${v.id}')">Geplaatst</button>
+    <button class="knop gewoon" onclick="actie('opnieuw','${v.id}')">Opnieuw maken</button></div></div>`;
+  if (v.status === "geplaatst") return `<div class="kaart">${kop}<div class="hook">${esc(v.titel)}</div>
+    ${v.link ? `<a href="${esc(v.link)}" target="_blank" rel="noopener">${esc(v.link)}</a>` : ""}
+    <label>Views (vul in na 1-3 dagen, Claude leert hiervan)</label>
+    <input id="views-${v.id}" inputmode="numeric" value="${esc(v.views ?? "")}" oninput="bewerkt=true">
+    <div class="knoppen"><button class="knop gewoon" onclick="views('${v.id}')">Opslaan</button></div></div>`;
+  if (v.status === "afgewezen") return `<div class="kaart">${kop}<div class="hook">${esc(v.hook)}</div>
+    <div class="knoppen"><button class="knop gewoon" onclick="actie('terug','${v.id}')">Terugzetten</button></div></div>`;
+  return `<div class="kaart">${kop}<div class="hook">${esc(v.hook)}</div><div class="fout">${esc(v.fout)}</div>
+    <div class="knoppen"><button class="knop gewoon" onclick="actie('opnieuw','${v.id}')">Opnieuw proberen</button></div></div>`;
+}
+
+async function actie(naam, id, body = {}) {
+  const r = await fetch(`/api/${naam}/${encodeURIComponent(id)}`, {method: "POST", body: JSON.stringify(body)});
+  if (!r.ok) alert((await r.json()).fout);
+  bewerkt = false; laad();
+}
+const val = (p, id) => document.getElementById(`${p}-${id}`).value;
+const akkoord = id => actie("akkoord", id, {hook: val("hook", id), titel: val("titel", id)});
+const geplaatst = id => actie("geplaatst", id, {link: val("link", id)});
+const views = id => actie("views", id, {views: val("views", id)});
+function kies(k) { tab = k; bewerkt = false; laad(); }
+function kopieer(el) { el.select(); navigator.clipboard?.writeText(el.value); el.style.outline = "2px solid var(--ok)"; setTimeout(() => el.style.outline = "", 600); }
+
+laad(); setInterval(laad, 4000);
+</script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+"""Ondertitels (ASS): grote woorden onderin met het gesproken woord gemarkeerd, plus de hook bovenin."""
+
+from __future__ import annotations
+
+import re
+
+WIT = "&H00FFFFFF&"
+GEEL = "&H0000E5FF&"
+
+KOP = """[Script Info]
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Onder,Arial,82,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,7,3,2,70,70,520,1
+Style: Hook,Arial,62,&H00000000,&H00000000,&H00FFFFFF,&H00000000,-1,0,0,0,100,100,0,0,3,20,0,8,90,90,300,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+
+
+def ass_tijd(sec: float) -> str:
+    sec = max(sec, 0.0)
+    cs = int(round(sec * 100))
+    h, cs = divmod(cs, 360000)
+    m, cs = divmod(cs, 6000)
+    s, cs = divmod(cs, 100)
+    return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
+
+
+def schoon(tekst: str) -> str:
+    return re.sub(r"[{}\\]", "", tekst).strip()
+
+
+def groepeer(woorden: list[dict], max_woorden: int = 3, max_tekens: int = 18, max_gat: float = 0.6) -> list[list[dict]]:
+    groepen: list[list[dict]] = []
+    huidig: list[dict] = []
+    for w in woorden:
+        if huidig:
+            vorige = huidig[-1]
+            lengte = sum(len(x["woord"]) + 1 for x in huidig) + len(w["woord"])
+            if (
+                len(huidig) >= max_woorden
+                or lengte > max_tekens
+                or w["start"] - vorige["end"] > max_gat
+                or vorige["woord"].rstrip().endswith((".", "?", "!"))
+            ):
+                groepen.append(huidig)
+                huidig = []
+        huidig.append(w)
+    if huidig:
+        groepen.append(huidig)
+    return groepen
+
+
+def maak_ass(woorden: list[dict], clip_start: float, duur: float, hook: str = "", hook_duur: float = 3.0) -> str:
+    """woorden: absolute tijden uit het transcript; ze worden omgerekend naar clip-tijd."""
+    rel = [
+        {"start": max(0.0, w["start"] - clip_start), "end": min(duur, w["end"] - clip_start), "woord": schoon(w["woord"]).upper()}
+        for w in woorden
+        if schoon(w["woord"])
+    ]
+    regels = [KOP]
+    if hook:
+        regels.append(f"Dialogue: 1,{ass_tijd(0)},{ass_tijd(min(hook_duur, duur))},Hook,,0,0,0,,{schoon(hook)}\n")
+
+    groepen = groepeer(rel)
+    for gi, groep in enumerate(groepen):
+        volgende_start = groepen[gi + 1][0]["start"] if gi + 1 < len(groepen) else duur
+        for i, w in enumerate(groep):
+            start = w["start"]
+            if i + 1 < len(groep):
+                eind = groep[i + 1]["start"]
+            else:
+                eind = min(w["end"] + 0.5, volgende_start)
+            if eind <= start:
+                continue
+            delen = [
+                (f"{{\\c{GEEL}}}{x['woord']}{{\\c{WIT}}}" if j == i else x["woord"])
+                for j, x in enumerate(groep)
+            ]
+            regels.append(f"Dialogue: 0,{ass_tijd(start)},{ass_tijd(eind)},Onder,,0,0,0,,{' '.join(delen)}\n")
+    return "".join(regels)

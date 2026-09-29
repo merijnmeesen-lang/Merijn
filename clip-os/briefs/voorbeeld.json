@@ -1,0 +1,16 @@
+{
+  "naam": "Voorbeeld: ondernemers-podcast",
+  "actief": false,
+  "platform": "ClipArmy",
+  "cpm": "€1 per 1.000 views",
+  "taal": "nl",
+  "min_seconden": 20,
+  "max_seconden": 60,
+  "verplichte_hashtags": ["#ad"],
+  "verplichte_tekst": [],
+  "verboden": ["gokken"],
+  "bron_kanalen": ["https://www.youtube.com/@kanaalnaam"],
+  "bron_links": [],
+  "indienen": "Dien de link binnen 48 uur na plaatsen in via de campagnepagina.",
+  "notities": "Dit is een voorbeeld; 'actief': false zorgt dat de dagelijkse run hem overslaat."
+}

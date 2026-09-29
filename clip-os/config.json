@@ -1,0 +1,6 @@
+{
+  "max_nieuwe_bronnen_per_dag": 2,
+  "max_ideeen_per_bron": 6,
+  "whisper_model": "small",
+  "dashboard_poort": 8765
+}

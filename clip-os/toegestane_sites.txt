@@ -1,0 +1,21 @@
+# Sites waar Clip-OS verbinding mee mag maken (één domein per regel, subdomeinen tellen mee).
+# Alles wat hier niet staat, wordt geblokkeerd. Betaalde AI-diensten zijn ALTIJD geblokkeerd,
+# ook als je ze hier toevoegt (zie ZWARTE_LIJST in clipos/kostenwacht.py).
+
+# Videobronnen (gratis downloaden van campagne-video's)
+youtube.com
+youtu.be
+googlevideo.com
+ytimg.com
+ggpht.com
+twitch.tv
+ttvnz.net
+kick.com
+drive.google.com
+drive.usercontent.google.com
+dropbox.com
+dropboxusercontent.com
+
+# Eenmalige gratis download van het spraakmodel (faster-whisper)
+huggingface.co
+hf.co
