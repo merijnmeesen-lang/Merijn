@@ -89,6 +89,13 @@ lessenboek.md  wat werkt, wat niet (houdt de Analist bij)
 config.json    maximum per dag, spraakmodel, poort
 ```
 
+## 🌍 Taal
+
+De video krijgt altijd de taal van de bron: een Engelse podcast wordt een Engelse clip, met Engelse ondertitels, hook, titel en hashtags. Het dashboard en de meldingen aan jou blijven Nederlands.
+- **Engels** (Vyro, Whop): de meeste campagnes en de hoogste tarieven. Zie `briefs/voorbeeld-engels.json`.
+- **Nederlands** (ClipArmy, Klippie, ClipHub): minder campagnes en lagere tarieven, maar ook weinig concurrentie. Zie `briefs/voorbeeld.json`.
+- Gebruik **per taal een apart account** op YouTube en TikTok. Het algoritme moet snappen voor wie je kanaal is.
+
 ## ⚠️ Goed om te weten
 
 - **Snelheid:** transcriberen gebeurt op je processor. Een podcast van een uur duurt al snel 10 tot 30 minuten. Daarom draait dat 's ochtends automatisch. Voor Nederlands kun je in `config.json` `"whisper_model": "medium"` zetten. Dat is nauwkeuriger, maar trager.

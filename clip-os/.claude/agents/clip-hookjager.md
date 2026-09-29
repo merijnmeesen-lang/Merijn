@@ -27,7 +27,7 @@ Schrijf `jobs/<job>/clips.json` (maximaal 8 kandidaten, beste eerst):
 ```json
 {"clips": [
   {"id": "c01", "start": 123.4, "end": 161.0,
-   "hook": "Korte tekst bovenin beeld, max ~60 tekens, in de taal van de brief",
+   "hook": "Korte tekst bovenin beeld, max ~60 tekens, in de taal van de video",
    "titel": "Voorlopige titel",
    "reden": "Eén zin: waarom dit werkt (hook + afloop)",
    "score": 8,
@@ -36,6 +36,7 @@ Schrijf `jobs/<job>/clips.json` (maximaal 8 kandidaten, beste eerst):
 ```
 - `start` = begin van de eerste zin; `end` = eind van de laatste zin (de tijden uit het transcript).
 - `score` 1–10: eerlijk. Een 9 of 10 alleen voor echte uitschieters.
+- **Taal:** hook en titel schrijf je in de taal van het transcript (zie `taal=` op de eerste regel van transcript.txt), tenzij de brief expliciet een andere `taal` noemt. Een Engelse podcast krijgt dus Engelse teksten (ook al is deze instructie Nederlands).
 - De hook-tekst is **niet** hetzelfde als de eerste zin. Hij maakt nieuwsgierig ("Hij verloor €2 miljoen in één nacht").
 
 Controleer daarna met `python -m clipos check-ideeen <job>` en los fouten op tot er OK staat. Rapporteer in 2 à 3 zinnen hoeveel ideeën je vond en wat de sterkste is.

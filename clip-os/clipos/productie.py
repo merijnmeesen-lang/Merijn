@@ -117,7 +117,7 @@ def maak(vid: str) -> dict:
 def actieve_briefs() -> list[tuple[str, dict]]:
     uit = []
     for pad in sorted(werk.BRIEFS.glob("*.json")):
-        if pad.stem == "voorbeeld":
+        if pad.stem.startswith("voorbeeld"):
             continue
         b = werk.lees_brief(pad.stem)
         if b.get("actief", True):

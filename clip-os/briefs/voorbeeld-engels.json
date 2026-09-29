@@ -1,0 +1,16 @@
+{
+  "naam": "Example: business podcast (English)",
+  "actief": false,
+  "platform": "Vyro",
+  "cpm": "$3 per 1,000 views (min. 5,000 views per clip)",
+  "taal": "en",
+  "min_seconden": 20,
+  "max_seconden": 60,
+  "verplichte_hashtags": ["#ad"],
+  "verplichte_tekst": [],
+  "verboden": ["gambling", "casino"],
+  "bron_kanalen": ["https://www.youtube.com/@channelname"],
+  "bron_links": [],
+  "indienen": "Submit the Shorts link on the campaign page after posting.",
+  "notities": "Voorbeeld van een Engelse campagne; 'actief': false zorgt dat de dagelijkse run hem overslaat."
+}
