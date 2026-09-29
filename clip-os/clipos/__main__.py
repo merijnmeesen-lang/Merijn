@@ -26,7 +26,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("job")
     s = sub.add_parser("maak", help="video maken voor een voorstel (normaal via Akkoord in het dashboard)")
     s.add_argument("id")
-    s = sub.add_parser("dashboard", help="dashboard openen in je browser")
+    s = sub.add_parser("dashboard", help="Clip-OS openen in je browser (Chrome)")
     s.add_argument("--poort", type=int); s.add_argument("--geen-browser", action="store_true")
     s = sub.add_parser("melding", help="bericht in het dashboard + bureaubladmelding")
     s.add_argument("tekst")

@@ -10,7 +10,7 @@ python -m clipos kostenwacht
 echo.
 where claude >nul 2>nul || echo Let op: Claude Code is nog niet geinstalleerd - zie https://code.claude.com/docs (inloggen met je Pro-account).
 echo Klaar. Volgende stappen:
-echo   1. start.bat                  - dashboard openen
+echo   1. start.bat                  - Clip-OS openen in Chrome
 echo   2. claude, dan /campagne      - campagne toevoegen (of /video ^<link^>)
 echo   3. python -m clipos planning  - dagelijkse run inplannen
 pause

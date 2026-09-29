@@ -14,6 +14,6 @@ if ! command -v claude >/dev/null 2>&1; then
   echo "⚠️  Claude Code is nog niet geïnstalleerd: zie https://code.claude.com/docs (inloggen met je Pro-account)."
 fi
 echo "Klaar. Volgende stappen:"
-echo "  1. ./start.sh             → dashboard openen"
+echo "  1. ./start.sh             → Clip-OS openen in Chrome"
 echo "  2. claude  → /campagne    → campagne toevoegen (of /video <link>)"
 echo "  3. python -m clipos planning   → dagelijkse run inplannen"

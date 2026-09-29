@@ -1,7 +1,7 @@
 # 🎬 Clip-OS
 
 Claude bedenkt de clips en het systeem maakt de video's. **Jij plaatst ze** op YouTube en ClipArmy (of Klippie, Whop, Vyro).
-Alles draait op je eigen computer en kost **€0**: alleen je Claude Pro-abonnement, met een harde kostenstop.
+Je werkt erin via **Chrome**. Alles draait op je eigen computer en kost **€0**: alleen je Claude Pro-abonnement, met een harde kostenstop.
 
 ```
 Elke ochtend (automatisch)                 Jij (±10 min per dag)
@@ -11,7 +11,7 @@ Elke ochtend (automatisch)                 Jij (±10 min per dag)
 🎣 Hook-jager (Claude): sterkste momenten
 ✍️ Copywriter (Claude): titel + hashtags
 📊 Analist (Claude): leert van je views
-🔔 Melding in het dashboard        ──────►  💡 Ideeën bekijken → Akkoord / Afwijzen
+🔔 Melding in Clip-OS             ──────►  💡 Ideeën bekijken → Akkoord / Afwijzen
                                                      │
 ✂️ Editor: 9:16, gezicht volgen,     ◄───────────────┘  (direct, gratis, zonder Claude)
    ondertitels, hook, geluid
@@ -43,27 +43,38 @@ Nodig: **Python 3.10+** ([python.org](https://www.python.org/downloads/); vink o
 2. Dubbelklik **`setup.bat`** (Windows), of draai `./setup.sh` (Mac/Linux).
    Dit installeert alles gratis, ook ffmpeg. De eerste transcriptie downloadt eenmalig het gratis spraakmodel.
 
-## ▶️ Gebruik
+## 🖥️ Werken in Clip-OS (in Chrome)
 
-**Dashboard openen:** dubbelklik `start.bat` (of `./start.sh`). Het dashboard opent in je browser op `http://127.0.0.1:8765`.
+Dubbelklik **`start.bat`** (Windows) of draai `./start.sh` (Mac/Linux). Clip-OS opent in je browser op **http://127.0.0.1:8765**. Laat het venster open zolang je werkt. Tip: zet het in Chrome bij je bladwijzers, of kies ⋮ → *Opslaan en delen* → *Snelkoppeling maken* → *Openen als venster*. Dan werkt het als een los programma.
 
-**Campagne toevoegen:** open een terminal in deze map, typ `claude` en daarna:
+| App | Wat je er doet |
+|---|---|
+| 🏠 **Vandaag** | bericht van Claude, cijfers per taal, een link plakken zodat Claude begint, de dagelijkse run starten, activiteit |
+| 💡 **Ideeën** | hook of titel aanpassen, en daarna **Akkoord, maak video** of afwijzen (✕) |
+| 🎬 **Studio** | video's die nu gemaakt worden (gewone code, geen Claude-gebruik); mislukte opnieuw proberen |
+| 📤 **Plaatsen** | video bekijken, op welk kanaal hij moet, titel en beschrijving kopiëren, mp4 downloaden, **Geplaatst** klikken |
+| 📈 **Resultaten** | views invullen, top 10-grafiek, totalen per taal |
+| 🎯 **Campagnes** | campagnetekst plakken zodat Claude hem invult, of zelf invullen in een formulier; aan/uit per campagne |
+| 🤖 **Claude** | je team van agents (actieve agents lichten op), taken starten, **live logboek** en een **stopknop** |
+| 📘 **Lessenboek** | wat Claude geleerd heeft van je views en afwijzingen |
+| ⚙️ **Instellingen** | talen, accounts en daglimieten, spraakmodel, thema (donker/licht), status van de kostenwacht |
+
+Met de taalknoppen bovenin (**Alle · 🇬🇧 EN · 🇳🇱 NL**) filter je elke pagina op taal.
+
+**Claude vanuit de browser:** de knoppen *Laat Claude beginnen*, *Dagelijkse run* en *Laat Claude invullen* starten Claude Code op je computer, op je **Pro-login**. Er loopt één taak tegelijk, met maximaal 80 stappen. Betaalde sleutels worden altijd weggehaald voordat Claude start. Je kunt elke taak stoppen.
+
+**Veilig:** Clip-OS is alleen bereikbaar vanaf je eigen computer. Elke actie vereist een geheime sleutel die alleen de Clip-OS-pagina kent. Andere websites kunnen dus niets starten of wijzigen.
+
+### Zonder browser (terminal)
+
+Alles kan ook in de terminal. Typ `claude` in deze map, en daarna:
 ```
-/campagne <plak hier de campagnetekst van ClipArmy/Klippie/…>
-```
-Claude maakt er een brief van in `briefs/`, met lengte, hashtags, taal en de bronkanalen.
-
-**Direct een video laten uitwerken:**
-```
-/video https://www.youtube.com/watch?v=… <brief-naam>
+/campagne <plak hier de campagnetekst>
+/video https://www.youtube.com/watch?v=… <campagne-naam>
+/dagelijks
 ```
 
-**Elke dag automatisch:** `python -m clipos planning` geeft het commando om de dagelijkse run in te plannen (Windows Taakplanner of Mac/Linux cron). Je computer moet op dat moment aan staan. Handmatig starten kan met `dagelijks.bat` / `./dagelijks.sh`.
-
-**In het dashboard:**
-- 💡 **Nieuwe ideeën:** pas eventueel de hook of titel aan, en klik **Akkoord** of **Afwijzen**.
-- ✅ **Klaar om te plaatsen:** bekijk de video en klik op de titel of beschrijving om te kopiëren. De video staat ook in `output/…/video.mp4`, met een checklist in `PLAATSEN.md`.
-- 📈 **Geplaatst:** vul na 1 tot 3 dagen de views in. De Analist leert daarvan en schrijft het in `lessenboek.md`.
+**Elke dag automatisch:** `python -m clipos planning` geeft het commando om de dagelijkse run in te plannen (Windows Taakplanner of Mac/Linux cron). Je computer moet op dat moment aan staan. Handmatig starten kan met `dagelijks.bat` / `./dagelijks.sh`, of met de knop in Clip-OS.
 
 ## 🤖 De agents
 
@@ -92,7 +103,7 @@ config.json    talen + accounts + daglimiet per taal, spraakmodel, poort
 
 ## 🌍 Twee talen: Engels én Nederlands
 
-Clip-OS maakt Engelse en Nederlandse video's naast elkaar. De taal komt uit de campagne-brief (`"taal": "en"` of `"nl"`). Een Engelse bron krijgt Engelse ondertitels, hook, titel en hashtags, een Nederlandse bron krijgt Nederlandse. Het dashboard en de meldingen aan jou blijven Nederlands.
+Clip-OS maakt Engelse en Nederlandse video's naast elkaar. De taal komt uit de campagne-brief (`"taal": "en"` of `"nl"`). Een Engelse bron krijgt Engelse ondertitels, hook, titel en hashtags, een Nederlandse bron krijgt Nederlandse. Clip-OS zelf en de meldingen aan jou blijven Nederlands.
 
 | | 🇬🇧 Engels | 🇳🇱 Nederlands |
 |---|---|---|
@@ -101,7 +112,7 @@ Clip-OS maakt Engelse en Nederlandse video's naast elkaar. De taal komt uit de c
 | Output-map | `output/en/…` | `output/nl/…` |
 
 - **Elke dag allebei:** in `config.json` → `talen` heeft elke taal een eigen daglimiet (standaard 1 nieuwe bronvideo per taal per dag), zodat de ene taal de andere niet verdringt. Daar zet je ook de naam van je account per taal neer. Die staat dan bij elke video ("📍 Plaats op: …").
-- **Dashboard:** elke kaart heeft een taalbadge. Met de taalknoppen filter je op 🇬🇧 of 🇳🇱.
+- **In Clip-OS:** elke kaart heeft een taalbadge. Met de taalknoppen bovenin filter je op 🇬🇧 of 🇳🇱.
 - **Leren per taal:** de Analist houdt de lessen voor Engels en Nederlands apart bij.
 - Gebruik **per taal een apart YouTube- en TikTok-account**. Het algoritme moet snappen voor wie je kanaal is.
 - Een Engelse campagne zonder clipplatform (alleen je eigen kanaal)? Laat `platform` leeg in de brief. Dan slaat de checklist de indienstap over.
