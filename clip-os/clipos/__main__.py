@@ -9,7 +9,17 @@ import sys
 from . import kostenwacht
 
 
+def utf8_uitvoer() -> None:
+    """Windows gebruikt voor doorgestuurde uitvoer cp1252; dan crasht print() op emoji zoals ✅."""
+    for stroom in (sys.stdout, sys.stderr):
+        try:
+            stroom.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    utf8_uitvoer()
     p = argparse.ArgumentParser(prog="python -m clipos", description="Clip-OS: lange video → kant-en-klare clips (gratis, lokaal).")
     sub = p.add_subparsers(dest="cmd", required=True)
 

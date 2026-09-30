@@ -40,7 +40,9 @@ def claude_pad() -> str | None:
 
 def schone_omgeving() -> dict:
     """Omgeving voor Claude zonder betaalde sleutels (anders zou Claude Code per gebruik afrekenen)."""
-    return {k: v for k, v in os.environ.items() if k not in kostenwacht.BETAALDE_SLEUTELS}
+    env = {k: v for k, v in os.environ.items() if k not in kostenwacht.BETAALDE_SLEUTELS}
+    env.update(PYTHONUTF8="1", PYTHONIOENCODING="utf-8")  # geen emoji-crashes op Windows
+    return env
 
 
 def _pad(tid: str):

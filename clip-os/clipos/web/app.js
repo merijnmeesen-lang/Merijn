@@ -483,7 +483,7 @@ function paginaClaude() {
   const geenClaude = S.kw && !S.kw.claude_gevonden;
   const statusBadge = t => ({ wacht: `<span class="badge">In de wachtrij</span>`, bezig: `<span class="badge accent"><span class="stip bezig"></span>Bezig</span>`,
     klaar: `<span class="badge ok">Klaar</span>`, fout: `<span class="badge fout">Mislukt</span>`, gestopt: `<span class="badge warn">Gestopt</span>` })[t.status] || "";
-  const detail = t => t.soort === "video" ? `${esc(t.data.link)}${t.data.brief ? ` · campagne ${esc(t.data.brief)}` : ""}` : t.soort === "campagne" ? esc((t.data.tekst || "").slice(0, 120)) + "…" : "Nieuwe video's zoeken, ideeën bedenken, lessen bijwerken";
+  const detail = t => t.soort === "trends" ? `Taal: ${esc(t.data.taal)}${t.data.onderwerp ? ` · onderwerp: ${esc(t.data.onderwerp)}` : ""}` : t.soort === "video" ? `${esc(t.data.link)}${t.data.brief ? ` · campagne ${esc(t.data.brief)}` : ""}` : t.soort === "campagne" ? esc((t.data.tekst || "").slice(0, 120)) + "…" : "Nieuwe video's zoeken, ideeën bedenken, lessen bijwerken";
   return `
     ${geenClaude ? `<div class="waarschuwing" style="margin-bottom:14px">⚠️ Claude Code is niet gevonden op deze computer. Installeer het en log in met je Pro-account (typ <b>claude</b> en daarna <b>/login</b>). Daarna werken deze knoppen.</div>` : ""}
     <div class="sectie" style="margin-top:0"><h2>Je team</h2><span>oplichtend = nu aan het werk</span></div>

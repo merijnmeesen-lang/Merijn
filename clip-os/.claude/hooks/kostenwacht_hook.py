@@ -36,6 +36,11 @@ def reden_om_te_blokkeren(cmd: str) -> str | None:
 
 
 def main() -> int:
+    for stroom in (sys.stdout, sys.stderr):
+        try:
+            stroom.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     try:
         data = json.load(sys.stdin)
     except json.JSONDecodeError:
