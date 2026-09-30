@@ -9,6 +9,8 @@ echo.
 python -m clipos kostenwacht
 echo.
 where claude >nul 2>nul || echo Let op: Claude Code is nog niet geinstalleerd - zie https://code.claude.com/docs (inloggen met je Pro-account).
+echo BELANGRIJK (eenmalig): typ in deze map in een terminal  claude  en kies 'Yes, I trust this folder'. Typ daarna /exit.
+echo.
 echo Klaar. Volgende stappen:
 echo   1. start.bat                  - Clip-OS openen in Chrome
 echo   2. claude, dan /campagne      - campagne toevoegen (of /video ^<link^>)

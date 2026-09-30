@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "PY=$(command -v python3 || command -v python); \"$PY\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/kostenwacht_hook.py\""
+            "command": "P=\"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe\"; [ -x \"$P\" ] || P=\"$CLAUDE_PROJECT_DIR/.venv/bin/python\"; [ -x \"$P\" ] || P=$(command -v python3 || command -v python); \"$P\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/kostenwacht_hook.py\""
           }
         ]
       }

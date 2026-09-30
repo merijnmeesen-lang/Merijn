@@ -26,6 +26,11 @@ _wachtrij: "queue.Queue[str]" = queue.Queue()
 _huidig: dict = {"id": None, "proc": None}
 _slot = threading.Lock()
 
+NIET_VERTROUWD = (
+    "Claude Code vertrouwt de Clip-OS-map nog niet, en mocht daarom niets doen. Eenmalig oplossen: "
+    "open de map clip-os in Verkenner, klik met rechts op een lege plek > Openen in Terminal, typ claude, "
+    "kies 'Yes, I trust this folder' en typ daarna /exit. Start de taak dan opnieuw."
+)
 TITELS = {"video": "Ideeën voor video", "dagelijks": "Dagelijkse run", "campagne": "Campagne toevoegen", "trends": "Marktonderzoek"}
 
 
@@ -205,13 +210,18 @@ def _voer_uit(tid: str) -> None:
         proc = subprocess.Popen(cmd, cwd=werk.ROOT, env=schone_omgeving(), stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
         _huidig.update(id=tid, proc=proc)
+        niet_vertrouwd = False
         for regel in proc.stdout:
+            niet_vertrouwd = niet_vertrouwd or "has not been trusted" in regel
             for leesbaar in _leesbaar(regel):
                 f.write(leesbaar + "\n")
                 f.flush()
         rc = proc.wait()
         _huidig.update(id=None, proc=None)
     taak = lees(tid)
+    if niet_vertrouwd:
+        zet(tid, status="fout", klaar=inbox.nu(), fout=NIET_VERTROUWD)
+        return
     if taak.get("gestopt_door_jou"):
         zet(tid, status="gestopt", klaar=inbox.nu())
     elif rc == 0:

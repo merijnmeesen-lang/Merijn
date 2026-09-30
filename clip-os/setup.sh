@@ -13,6 +13,8 @@ echo
 if ! command -v claude >/dev/null 2>&1; then
   echo "⚠️  Claude Code is nog niet geïnstalleerd: zie https://code.claude.com/docs (inloggen met je Pro-account)."
 fi
+echo "BELANGRIJK (eenmalig): typ in deze map  claude  en kies \"Yes, I trust this folder\". Typ daarna /exit."
+echo
 echo "Klaar. Volgende stappen:"
 echo "  1. ./start.sh             → Clip-OS openen in Chrome"
 echo "  2. claude  → /campagne    → campagne toevoegen (of /video <link>)"
