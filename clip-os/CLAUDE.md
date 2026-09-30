@@ -1,0 +1,29 @@
+# Clip-OS: instructies voor Claude
+
+Dit is Clip-OS: een lokaal systeem dat van lange (podcast)video's korte clips maakt voor YouTube Shorts,
+in het Engels (The Money Clip) en Nederlands (De Geldclip). De eigenaar is geen programmeur: leg dingen
+in gewoon Nederlands uit en geef stap-voor-stap instructies.
+
+## Harde regels (nooit breken)
+- **Nooit kosten.** Geen betaalde API's, SDK's of diensten (anthropic, openai, elevenlabs, …). Alles draait
+  gratis en lokaal; Claude zelf draait via het Pro-abonnement van de eigenaar. De kostenwacht
+  (`clipos/kostenwacht.py`, `.claude/hooks/kostenwacht_hook.py`) nooit uitzetten of omzeilen.
+- **Plaatsen doet de eigenaar zelf.** Bouw geen automatisch uploaden naar YouTube/TikTok/clipplatforms.
+- Clippen alleen met toestemming (via campagnes). Campagne-eisen in `briefs/*.json` gaan voor.
+
+## Opbouw
+- `clipos/`: Python-pakket (`python -m clipos …`): download (yt-dlp), transcriptie (faster-whisper),
+  montage (ffmpeg + OpenCV), controle, inbox, dagelijkse scout.
+- `clipos/dashboard.py` + `clipos/web/` (index.html, app.css, app.js): de Clip-OS-webapp op
+  http://127.0.0.1:8765 (start.bat). Geen build-stap; gewone HTML/CSS/JS.
+- `clipos/claude_taken.py`: start Claude-taken vanuit de webapp (`claude -p`, Pro-login, max 80 stappen).
+- `.claude/agents/`: de agents (hookjager, copywriter, controleur, analist, scout).
+  `.claude/commands/`: /video, /dagelijks, /campagne.
+- `config.json` (talen, accounts, limieten), `briefs/` (campagnes), `lessenboek.md`, `branding/`.
+- Werkdata (niet in git): `jobs/`, `output/`, `data/`.
+
+## Na een wijziging
+- Tests: `python -m pytest` (installeer eerst `pip install pytest` in de venv als dat nog niet is gebeurd).
+- `python -m clipos kostenwacht` moet groen blijven.
+- Vertel de eigenaar dat hij Clip-OS opnieuw moet starten (zwarte venster sluiten, `start.bat` openen)
+  zodat de wijziging actief wordt.
