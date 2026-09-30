@@ -26,7 +26,7 @@ _wachtrij: "queue.Queue[str]" = queue.Queue()
 _huidig: dict = {"id": None, "proc": None}
 _slot = threading.Lock()
 
-TITELS = {"video": "Ideeën voor video", "dagelijks": "Dagelijkse run", "campagne": "Campagne toevoegen"}
+TITELS = {"video": "Ideeën voor video", "dagelijks": "Dagelijkse run", "campagne": "Campagne toevoegen", "trends": "Marktonderzoek"}
 
 
 def claude_pad() -> str | None:
@@ -77,6 +77,8 @@ def prompt_voor(soort: str, data: dict) -> str:
         return "/dagelijks"
     if soort == "campagne":
         return "/campagne " + data["tekst"]
+    if soort == "trends":
+        return f"/trends {data['taal']} {data.get('onderwerp') or ''}".strip()
     raise ValueError("onbekende taak")
 
 
@@ -96,6 +98,14 @@ def valideer(soort: str, data: dict) -> dict:
         return {"tekst": tekst}
     if soort == "dagelijks":
         return {}
+    if soort == "trends":
+        taal = str(data.get("taal") or "beide").strip().lower()
+        if taal not in ("en", "nl", "beide"):
+            raise ValueError("Kies Engels, Nederlands of beide")
+        onderwerp = " ".join(str(data.get("onderwerp") or "").split())
+        if len(onderwerp) > 80 or not re.fullmatch(r"[\w\s,&'.€$%+\-]*", onderwerp):
+            raise ValueError("Onderwerp mag maximaal 80 tekens zijn, zonder speciale tekens")
+        return {"taal": taal, "onderwerp": onderwerp}
     raise ValueError("onbekende taak")
 
 

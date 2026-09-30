@@ -15,7 +15,7 @@ function opslag(k, v) {
 
 const S = {
   staat: null, briefs: [], config: null, kw: null, les: "",
-  taal: opslag("taal") || "alle", bewerk: null, open: new Set(), concept: {}, vuil: false,
+  taal: opslag("taal") || "alle", trends: null, trendTaal: opslag("trendtaal") || "beide", bewerk: null, open: new Set(), concept: {}, vuil: false,
   laatsteHtml: "", offline: false, vorigeTaken: {},
 };
 
@@ -59,6 +59,8 @@ const ICONEN = {
   pin: "M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21zM12 12a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z",
   plus: "M12 5v14M5 12h14",
   sparkle: "M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z",
+  vuur: "M12 3c.5 3 4.5 5 4.5 10a4.5 4.5 0 0 1-9 0c0-2.2 1-3.8 2.3-5 .2 1.8 1 2.8 2.2 3.2C11.6 8.6 11 6 12 3z",
+  extern: "M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5",
 };
 const icoon = (n, extra = "") => `<svg class="i ${extra}" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONEN[n]}"/></svg>`;
 
@@ -101,6 +103,7 @@ function toast(tekst, soort = "ok") {
 /* ---------- pagina's ---------- */
 const PAGINAS = [
   { id: "vandaag", naam: "Vandaag", icoon: "home", sub: "Overzicht van je clipfabriek" },
+  { id: "trends", naam: "Trends", icoon: "vuur", sub: "Marktonderzoek: wat is nu trending en wat kun je clippen" },
   { id: "ideeen", naam: "Ideeën", icoon: "idee", sub: "Claude's voorstellen: geef akkoord of wijs af", teller: () => aantal(["idee"]), heet: true },
   { id: "studio", naam: "Studio", icoon: "studio", sub: "Video's die nu gemaakt worden", teller: () => aantal(["akkoord", "bezig", "fout"]) },
   { id: "plaatsen", naam: "Plaatsen", icoon: "send", sub: "Klaar om te plaatsen op YouTube en je clipplatform", teller: () => aantal(["klaar"]), heet: true },
@@ -210,6 +213,10 @@ function paginaVandaag() {
     <div class="stapel">
       ${nieuweVideoKaart()}
       <div class="kaart rij tussen">
+        <div><h3>Weet je niet wat je moet plaatsen?</h3><div class="zacht klein">Laat Claude marktonderzoek doen naar wat nu trending is.</div></div>
+        <a class="knop zacht" href="#/trends">${icoon("vuur")}Naar Trends</a>
+      </div>
+      <div class="kaart rij tussen">
         <div><h3>Dagelijkse run</h3><div class="zacht klein">Nieuwe video's van je campagnes zoeken en ideeën bedenken.
           ${laatsteRun ? `Laatste: ${esc(relTijd(laatsteRun.klaar || laatsteRun.gemaakt))} (${esc(laatsteRun.status)}).` : "Nog niet gedraaid."}</div></div>
         <button class="knop zacht" data-actie="claude-dagelijks">${icoon("play")}Nu starten</button>
@@ -251,6 +258,51 @@ function paginaIdeeen() {
     ${afgewezen.length ? `<div class="sectie"><h2>Afgewezen</h2><span>${afgewezen.length} · Claude leert hiervan</span></div>
       <div class="kaart"><div class="feed">${afgewezen.slice(-15).reverse().map(v => `<div><span>${taalBadge(v.taal)} ${esc(v.hook)}</span>
         <button class="knop zacht klein" data-actie="terug" data-id="${esc(v.id)}" style="margin-left:auto">Terugzetten</button></div>`).join("")}</div></div>` : ""}`;
+}
+
+const ytId = url => (String(url).match(/(?:v=|youtu\.be\/)([\w-]{6,})/) || [])[1];
+
+function paginaTrends() {
+  const r = S.trends;
+  const taak = (S.staat.taken || []).find(t => t.soort === "trends" && ["wacht", "bezig"].includes(t.status));
+  const zoeker = `<div class="kaart stapel">
+    <div><h3>Marktonderzoek laten doen</h3>
+    <p class="zacht klein">Claude zoekt op internet wat er deze week speelt rond geld, business en AI. Clip-OS zoekt daarna op YouTube de podcasts en interviews met de snelst stijgende views. Gratis via je Pro-account; duurt een paar minuten.</p></div>
+    <div class="rij">
+      <div class="segment" role="group" aria-label="Taal">${[["beide", "🌍 Beide"], ["en", "🇬🇧 Engels"], ["nl", "🇳🇱 Nederlands"]].map(([k, n]) =>
+        `<button class="${S.trendTaal === k ? "aan" : ""}" data-actie="trend-taal" data-taal="${k}">${n}</button>`).join("")}</div>
+      <input class="invoer" id="tr-onderwerp" data-concept="tr-onderwerp" style="flex:1;min-width:200px" placeholder="Onderwerp (optioneel), bijv. AI, vastgoed, beleggen" value="${esc(cv("tr-onderwerp"))}">
+      <button class="knop primair" data-actie="claude-trends" ${taak ? "disabled" : ""}>${icoon("vuur")}${taak ? "Onderzoek loopt…" : "Zoek wat trending is"}</button>
+    </div>
+    ${taak ? `<div class="rij flauw klein"><div class="draaier"></div>Claude is bezig met het onderzoek. Volg het live bij <a href="#/claude">Claude</a>.</div>` : ""}
+  </div>`;
+  if (!r) return zoeker + leeg("🔥", "Nog geen marktonderzoek", "Klik hierboven op ‘Zoek wat trending is’. Het resultaat verschijnt hier.");
+  const videos = (r.videos || []).filter(v => S.taal === "alle" || !v.taal || v.taal === S.taal);
+  const kaart = v => {
+    const id = ytId(v.url), mag = v.toestemming === "campagne";
+    return `<article class="kaart trend">
+      <a class="duim" href="${esc(v.url)}" target="_blank" rel="noopener">${id ? `<img src="https://i.ytimg.com/vi/${esc(id)}/mqdefault.jpg" alt="" loading="lazy">` : ""}<span class="badge">${esc(v.duur_min)} min</span></a>
+      <div class="stapel" style="gap:9px">
+        <div class="rij" style="gap:8px">${v.taal ? taalBadge(v.taal) : ""}
+          ${mag ? `<span class="badge ok">${icoon("check")}Campagne: ${esc(v.campagne)}</span>` : `<span class="badge warn">Toestemming onbekend</span>`}
+          ${v.onderwerp ? `<span class="badge">${esc(v.onderwerp)}</span>` : ""}</div>
+        <div><b>${esc(v.titel)}</b><div class="flauw klein">${esc(v.kanaal)}${v.geupload ? ` · ${esc(v.geupload)}` : ""}</div></div>
+        <div class="rij klein" style="gap:14px"><span>👁 ${getal(v.views)} views</span><span style="color:var(--accent-tekst);font-weight:650">📈 ${getal(v.per_dag)} per dag</span></div>
+        ${v.waarom ? `<div class="waarom">💡 <span>${esc(v.waarom)}</span></div>` : ""}
+        <div class="acties">
+          ${mag ? `<button class="knop primair" data-actie="trend-uitwerken" data-url="${esc(v.url)}" data-brief="${esc(v.campagne)}">${icoon("sparkle")}Maak ideeën</button>`
+                : `<button class="knop zacht" data-actie="trend-uitwerken" data-url="${esc(v.url)}" data-brief="">Ik heb toestemming, uitwerken</button>`}
+          <a class="knop zacht" href="${esc(v.url)}" target="_blank" rel="noopener">${icoon("extern")}Bekijk op YouTube</a>
+        </div>
+        ${mag ? "" : `<div class="tip">Alleen uitwerken en plaatsen als deze maker clippen toestaat, bijvoorbeeld via een campagne op Whop, Vyro of ClipArmy.</div>`}
+      </div>
+    </article>`;
+  };
+  return `${zoeker}
+    <div class="sectie"><h2>Laatste onderzoek</h2><span>${esc(relTijd(r.gemaakt))}${r.taal ? ` · ${esc(r.taal)}` : ""}</span></div>
+    ${r.samenvatting ? `<div class="bericht" style="margin:0 0 14px"><div class="avatar">C</div><div><div class="wie">Claude · marktonderzoek</div><div class="tekst">${esc(r.samenvatting)}</div></div></div>` : ""}
+    ${(r.onderwerpen || []).length ? `<div class="rij" style="gap:8px;margin-bottom:16px">${r.onderwerpen.map(o => `<span class="badge accent" title="${esc(o.waarom)}">🔥 ${esc(o.onderwerp)}</span>`).join("")}</div>` : ""}
+    ${videos.length ? `<div class="stapel">${videos.map(kaart).join("")}</div>` : leeg("🔎", "Geen video's in deze taal", "Kies bovenin een andere taal of doe een nieuw onderzoek.")}`;
 }
 
 function paginaStudio() {
@@ -403,6 +455,7 @@ const AGENTEN = [
   { id: "regisseur", emoji: "🎬", naam: "Regisseur", wie: "Claude", rol: "Stuurt de rest aan en schrijft je dagelijkse bericht" },
   { id: "scout", emoji: "🔭", naam: "Scout", wie: "Claude + code", rol: "Leest campagnes en vindt nieuwe video's" },
   { id: "bron", emoji: "📥", naam: "Bron", wie: "Code", rol: "Downloadt en transcribeert, lokaal en gratis" },
+  { id: "trend", emoji: "🔥", naam: "Trendonderzoeker", wie: "Claude + code", rol: "Zoekt wat nu trending is en welke video's goede clips geven" },
   { id: "hookjager", emoji: "🎣", naam: "Hook-jager", wie: "Claude", rol: "Kiest de sterkste momenten, met score" },
   { id: "copywriter", emoji: "✍️", naam: "Copywriter", wie: "Claude", rol: "Titels, beschrijving en hashtags per taal" },
   { id: "editor", emoji: "✂️", naam: "Editor", wie: "Code", rol: "9:16, gezicht volgen, ondertitels, hook, geluid" },
@@ -416,7 +469,7 @@ function actieveAgenten() {
   if (taak) {
     actief.add("regisseur");
     const recent = (taak.log || []).slice(-4).join("\n");
-    [["clip-hookjager", "hookjager"], ["clip-copywriter", "copywriter"], ["clip-controleur", "controleur"], ["clip-analist", "analist"], ["clip-scout", "scout"]]
+    [["clip-trendonderzoeker", "trend"], ["clip-hookjager", "hookjager"], ["clip-copywriter", "copywriter"], ["clip-controleur", "controleur"], ["clip-analist", "analist"], ["clip-scout", "scout"]]
       .forEach(([s, id]) => recent.includes(s) && actief.add(id));
     if (/clipos (dag|nieuw|transcribeer)/.test(recent)) actief.add("bron");
   }
@@ -512,7 +565,7 @@ function paginaInstellingen() {
   </div>`;
 }
 
-const RENDER = { vandaag: paginaVandaag, ideeen: paginaIdeeen, studio: paginaStudio, plaatsen: paginaPlaatsen, resultaten: paginaResultaten,
+const RENDER = { vandaag: paginaVandaag, trends: paginaTrends, ideeen: paginaIdeeen, studio: paginaStudio, plaatsen: paginaPlaatsen, resultaten: paginaResultaten,
   campagnes: paginaCampagnes, claude: paginaClaude, lessen: paginaLessen, instellingen: paginaInstellingen };
 
 function renderPagina(forceer = false) {
@@ -535,6 +588,7 @@ function magNietVerversen() {
 async function laadBriefs() { S.briefs = await api.get("/api/briefs"); }
 async function laadConfig() { S.config = await api.get("/api/config"); }
 async function laadKw() { S.kw = await api.get("/api/kostenwacht"); }
+async function laadTrends() { S.trends = (await api.get("/api/trends")).rapport; }
 async function laadLes() { S.les = (await api.get("/api/lessenboek")).tekst; }
 
 async function ververs() {
@@ -552,6 +606,7 @@ async function ververs() {
       toast(`🤖 ${t.titel}: klaar`);
       laadBriefs().catch(() => {});
       laadLes().catch(() => {});
+      laadTrends().catch(() => {});
     }
     S.vorigeTaken[t.id] = t.status;
   }
@@ -566,6 +621,7 @@ async function naarPagina() {
   try {
     if (p === "instellingen") await Promise.all([laadConfig(), laadKw()]);
     if (p === "lessen") await laadLes();
+    if (p === "trends") await laadTrends();
     if (p === "campagnes" || p === "vandaag" || p === "claude") await laadBriefs();
     if (p === "claude") await laadKw();
   } catch (e) { toast(e.message, "fout"); }
@@ -637,6 +693,15 @@ const ACTIES = {
     const b = S.briefs.find(x => x.bestand === el.dataset.bestand);
     await api.post("/api/claude/video", { link: b.bron_links[0], brief: b.bestand });
     toast("🤖 Claude werkt de eerste link van deze campagne uit.");
+  },
+  async "claude-trends"() {
+    await api.post("/api/claude/trends", { taal: S.trendTaal, onderwerp: $("#tr-onderwerp")?.value || "" });
+    toast("🔥 Claude start het marktonderzoek. Dit duurt een paar minuten.");
+  },
+  "trend-taal"(el) { S.trendTaal = el.dataset.taal; opslag("trendtaal", S.trendTaal); renderPagina(true); },
+  async "trend-uitwerken"(el) {
+    await api.post("/api/claude/video", { link: el.dataset.url, brief: el.dataset.brief || "" });
+    toast("🤖 Claude werkt deze video uit. De ideeën verschijnen bij Ideeën.");
   },
   async "claude-dagelijks"() { await api.post("/api/claude/dagelijks"); toast("🤖 Dagelijkse run gestart"); },
   async "claude-campagne"() {
@@ -717,6 +782,8 @@ document.addEventListener("input", e => {
 document.addEventListener("keydown", e => {
   if (e.key === "Enter" && e.target.id === "nv-link") { e.preventDefault(); document.querySelector('[data-actie="claude-video"]')?.click(); }
 });
+
+document.addEventListener("error", e => { if (e.target.tagName === "IMG") e.target.remove(); }, true);
 
 window.addEventListener("hashchange", naarPagina);
 

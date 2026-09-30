@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(python -m clipos:*)",
-      "Bash(python3 -m clipos:*)"
+      "Bash(python3 -m clipos:*)",
+      "WebSearch",
+      "WebFetch"
     ],
     "deny": [
       "Bash(pip install anthropic:*)",

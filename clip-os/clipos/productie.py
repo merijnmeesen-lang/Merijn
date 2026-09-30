@@ -9,6 +9,7 @@ from . import bron, controle, inbox, pakket, render, transcriptie, werk
 
 
 def config() -> dict:
+    werk.standaardbestanden()
     return werk.lees_json(werk.ROOT / "config.json")
 
 

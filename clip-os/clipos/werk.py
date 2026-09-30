@@ -16,6 +16,17 @@ BRIEFS = ROOT / "briefs"
 DATA = ROOT / "data"
 
 
+PERSOONLIJK = {"config.json": "config.voorbeeld.json", "lessenboek.md": "lessenboek.voorbeeld.md"}
+
+
+def standaardbestanden() -> None:
+    """Je eigen instellingen staan niet in git (dan overschrijft een update ze nooit).
+    Ontbreken ze, dan worden ze aangemaakt vanuit het voorbeeld."""
+    for eigen, voorbeeld in PERSOONLIJK.items():
+        if not (ROOT / eigen).exists() and (ROOT / voorbeeld).exists():
+            shutil.copy2(ROOT / voorbeeld, ROOT / eigen)
+
+
 def ffmpeg() -> str:
     """Systeem-ffmpeg als die er is, anders de gratis meegeleverde van imageio-ffmpeg."""
     pad = shutil.which("ffmpeg")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 
 from . import kostenwacht
@@ -37,6 +38,11 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("id"); s.add_argument("tekst")
     sub.add_parser("resultaten", help="geplaatste video's met views (voor de analist)")
     sub.add_parser("planning", help="zo zet je de dagelijkse run aan")
+    s = sub.add_parser("trends", help="trending podcasts/interviews op YouTube zoeken (voor de trendonderzoeker)")
+    s.add_argument("zoekterm", nargs="?"); s.add_argument("--kanaal"); s.add_argument("--max", type=int, default=8)
+    s.add_argument("--periode", choices=["dag", "week", "maand"], default="week")
+    s.add_argument("--min-minuten", type=int, default=10)
+    sub.add_parser("trends-klaar", help="rapport van de trendonderzoeker controleren en melden")
     a = p.parse_args(argv)
 
     if a.cmd == "kostenwacht":
@@ -44,6 +50,7 @@ def main(argv: list[str] | None = None) -> int:
     kostenwacht.bewaak()  # harde stop vóór elk ander commando
 
     from . import inbox, productie, render, transcriptie, werk
+    werk.standaardbestanden()
 
     if a.cmd == "nieuw":
         job = productie.nieuwe_job(a.bron, brief=a.brief, naam=a.naam)
@@ -111,6 +118,20 @@ def main(argv: list[str] | None = None) -> int:
             print("\nDoor jou afgewezen ideeën (hook | reden):")
             for v in afgewezen[-20:]:
                 print(f"- {v.get('hook')} | {v.get('afwijsreden') or '-'}")
+    elif a.cmd == "trends":
+        from . import trends
+        if not (a.zoekterm or a.kanaal):
+            raise SystemExit("Geef een zoekterm of --kanaal <url>.")
+        import yt_dlp
+        try:
+            videos = trends.kanaal(a.kanaal, a.max, a.min_minuten) if a.kanaal else trends.zoek(a.zoekterm, a.periode, a.max, a.min_minuten)
+        except yt_dlp.utils.DownloadError as e:
+            raise SystemExit(f"YouTube niet bereikbaar of niets gevonden: {str(e)[:300]}")
+        print(json.dumps(trends.verrijk(videos), ensure_ascii=False, indent=1))
+    elif a.cmd == "trends-klaar":
+        from . import trends
+        r = trends.rond_af()
+        print(f"Rapport OK: {len(r['videos'])} video's. Melding geplaatst.")
     elif a.cmd == "planning":
         from . import planning
         planning.uitleg()

@@ -5,3 +5,5 @@ jobs/
 output/
 data/
 .pytest_cache/
+config.json
+lessenboek.md

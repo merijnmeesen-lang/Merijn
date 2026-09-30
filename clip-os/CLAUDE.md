@@ -19,7 +19,11 @@ in gewoon Nederlands uit en geef stap-voor-stap instructies.
 - `clipos/claude_taken.py`: start Claude-taken vanuit de webapp (`claude -p`, Pro-login, max 80 stappen).
 - `.claude/agents/`: de agents (hookjager, copywriter, controleur, analist, scout).
   `.claude/commands/`: /video, /dagelijks, /campagne.
-- `config.json` (talen, accounts, limieten), `briefs/` (campagnes), `lessenboek.md`, `branding/`.
+- `config.json` en `lessenboek.md` zijn persoonlijk en staan niet in git (ze worden aangemaakt uit `config.voorbeeld.json`
+  en `lessenboek.voorbeeld.md`). Nieuwe config-opties altijd met een standaardwaarde lezen (`.get`), want
+  bestaande installaties hebben ze nog niet. `briefs/` (campagnes), `branding/`.
+- `clipos/trends.py` + agent `clip-trendonderzoeker` + `/trends`: marktonderzoek (pagina Trends).
+- Updates: `update.bat` (git pull). Eenmalige overstap vanaf de zip-versie: `overzetten.bat`.
 - Werkdata (niet in git): `jobs/`, `output/`, `data/`.
 
 ## Na een wijziging

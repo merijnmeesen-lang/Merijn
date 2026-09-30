@@ -171,7 +171,7 @@ class Handler(BaseHTTPRequestHandler):
         if pad in ("/", "/index.html"):
             html = (WEB / "index.html").read_text(encoding="utf-8").replace("__CLIPOS_SLEUTEL__", SLEUTEL)
             return self._stuur(200, html.encode(), "text/html; charset=utf-8",
-                               {"Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self'"})
+                               {"Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://i.ytimg.com; media-src 'self'"})
         if pad in STATISCH:
             bestand, soort = STATISCH[pad]
             return self._stuur(200, (WEB / bestand).read_bytes(), soort)
@@ -190,6 +190,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({**productie.config(), "whisper_modellen": WHISPER_MODELLEN})
         if pad == "/api/kostenwacht":
             return self._json(kostenwacht_status())
+        if pad == "/api/trends":
+            from . import trends
+            return self._json({"rapport": trends.lees_rapport()})
         if pad == "/api/lessenboek":
             return self._json({"tekst": (werk.ROOT / "lessenboek.md").read_text(encoding="utf-8")})
         if pad.startswith("/video/"):
@@ -252,7 +255,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"fout": f"Niet gevonden: {e}"}, 404)
 
     def _post(self, pad: str, body: dict):
-        if m := re.fullmatch(r"/api/claude/(video|dagelijks|campagne)", pad):
+        if m := re.fullmatch(r"/api/claude/(video|dagelijks|campagne|trends)", pad):
             return self._json({"ok": True, "taak": claude_taken.nieuw(m.group(1), body)})
         if m := re.fullmatch(r"/api/claude/stop/([0-9a-f]{12})", pad):
             return self._json({"ok": True, "taak": claude_taken.stop(m.group(1))})

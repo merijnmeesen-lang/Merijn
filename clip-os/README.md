@@ -76,6 +76,33 @@ Alles kan ook in de terminal. Typ `claude` in deze map, en daarna:
 
 **Elke dag automatisch:** `python -m clipos planning` geeft het commando om de dagelijkse run in te plannen (Windows Taakplanner of Mac/Linux cron). Je computer moet op dat moment aan staan. Handmatig starten kan met `dagelijks.bat` / `./dagelijks.sh`, of met de knop in Clip-OS.
 
+## 🔥 Trends: als je niet weet wat je moet plaatsen
+
+Open **Trends** in Clip-OS, kies Engels, Nederlands of beide (en eventueel een onderwerp) en klik op **Zoek wat trending is**. Dan gebeurt het volgende:
+1. De **Trendonderzoeker** (Claude, via je Pro-account) zoekt op internet wat er deze week speelt rond geld, business en AI.
+2. Clip-OS zoekt op YouTube de podcasts en interviews van deze week, en rekent uit welke het snelst stijgen in **views per dag**.
+3. Je krijgt een lijst met per video het label **✅ Campagne** (clippen mag) of **⚠️ Toestemming onbekend**, plus de reden waarom er goede clips in zitten.
+4. Met **Maak ideeën** werkt Clip-OS de video meteen uit.
+
+Plaats alleen clips van makers die toestemming geven, bijvoorbeeld via een campagne.
+
+## 🔄 Updates
+
+### Eenmalig: overstappen naar updates met 1 klik
+Heb je Clip-OS als zip gedownload? Stap dan één keer over naar een versie die zichzelf kan bijwerken:
+1. Open **PowerShell** en typ `git --version`. Zie je een foutmelding, typ dan `winget install --id Git.Git -e`, sluit PowerShell en open het opnieuw.
+2. Typ:
+   ```
+   cd $HOME\Documents
+   git clone -b claude/tender-lovelace-ouybr3 https://github.com/merijnmeesen-lang/Merijn.git ClipOS
+   ```
+   Er opent een browservenster om in te loggen bij GitHub. Log in en klik op **Authorize**.
+3. Open **Documenten → ClipOS → clip-os**. Dubbelklik **`overzetten.bat`**: dat neemt je accounts, campagnes, ideeën en video's mee uit de oude map. Dubbelklik daarna **`setup.bat`** (eenmalig).
+4. Maak een nieuwe snelkoppeling naar **`start.bat`** in deze map, en verwijder de oude snelkoppeling.
+
+### Daarna: updaten
+Dubbelklik **`update.bat`**. Daarna sluit je het zwarte venster van Clip-OS en start je `start.bat` opnieuw. Je instellingen (`config.json`), lessenboek, campagnes en video's worden nooit overschreven.
+
 ## 🤖 De agents
 
 | Agent | Wie | Wat |
@@ -98,7 +125,7 @@ output/en/     KLAAR OM TE PLAATSEN (Engels): video.mp4 + PLAATSEN.md per clip
 output/nl/     KLAAR OM TE PLAATSEN (Nederlands)
 data/          inbox, meldingen, logboek
 lessenboek.md  wat werkt, wat niet, per taal (houdt de Analist bij)
-config.json    talen + accounts + daglimiet per taal, spraakmodel, poort
+config.json    jouw talen + accounts + daglimieten (wordt aangemaakt uit config.voorbeeld.json)
 ```
 
 ## 🌍 Twee talen: Engels én Nederlands
