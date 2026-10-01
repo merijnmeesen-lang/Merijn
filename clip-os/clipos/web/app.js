@@ -483,7 +483,7 @@ function paginaClaude() {
   const geenClaude = S.kw && !S.kw.claude_gevonden;
   const statusBadge = t => ({ wacht: `<span class="badge">In de wachtrij</span>`, bezig: `<span class="badge accent"><span class="stip bezig"></span>Bezig</span>`,
     klaar: `<span class="badge ok">Klaar</span>`, fout: `<span class="badge fout">Mislukt</span>`, gestopt: `<span class="badge warn">Gestopt</span>` })[t.status] || "";
-  const detail = t => t.soort === "trends" ? `Taal: ${esc(t.data.taal)}${t.data.onderwerp ? ` · onderwerp: ${esc(t.data.onderwerp)}` : ""}` : t.soort === "video" ? `${esc(t.data.link)}${t.data.brief ? ` · campagne ${esc(t.data.brief)}` : ""}` : t.soort === "campagne" ? esc((t.data.tekst || "").slice(0, 120)) + "…" : "Nieuwe video's zoeken, ideeën bedenken, lessen bijwerken";
+  const detail = t => t.soort === "afmaken" ? `Bronvideo: ${esc(t.data.job)}` : t.soort === "trends" ? `Taal: ${esc(t.data.taal)}${t.data.onderwerp ? ` · onderwerp: ${esc(t.data.onderwerp)}` : ""}` : t.soort === "video" ? `${esc(t.data.link)}${t.data.brief ? ` · campagne ${esc(t.data.brief)}` : ""}` : t.soort === "campagne" ? esc((t.data.tekst || "").slice(0, 120)) + "…" : "Nieuwe video's zoeken, ideeën bedenken, lessen bijwerken";
   return `
     ${geenClaude ? `<div class="waarschuwing" style="margin-bottom:14px">⚠️ Claude Code is niet gevonden op deze computer. Installeer het en log in met je Pro-account (typ <b>claude</b> en daarna <b>/login</b>). Daarna werken deze knoppen.</div>` : ""}
     <div class="sectie" style="margin-top:0"><h2>Je team</h2><span>oplichtend = nu aan het werk</span></div>
@@ -498,6 +498,10 @@ function paginaClaude() {
           <a class="knop zacht" href="#/campagnes">${icoon("flag")}Naar campagnes</a></div>
       </div>
     </div>
+    ${(S.openJobs || []).length ? `<div class="sectie"><h2>Onafgemaakte video's</h2><span>gedownload, maar nog geen ideeën</span></div>
+      <div class="kaart"><div class="feed">${S.openJobs.map(j => `<div><span><b>${esc(j.titel)}</b>
+        <span class="flauw klein"> · ${j.uitgeschreven ? "uitgeschreven ✓" : j.gedownload ? "gedownload, nog niet uitgeschreven" : "nog niet gedownload"}</span></span>
+        ${j.gedownload ? `<button class="knop zacht klein" style="margin-left:auto" data-actie="afmaken" data-job="${esc(j.job)}" ${taken.some(t => ["wacht", "bezig"].includes(t.status) && t.data && t.data.job === j.job) ? "disabled" : ""}>${icoon("play")}Afmaken</button>` : ""}</div>`).join("")}</div></div>` : ""}
     <div class="sectie"><h2>Taken</h2><span>live logboek</span></div>
     ${taken.length ? `<div class="stapel">${taken.map(t => {
       const toon = t.status === "bezig" || S.open.has(t.id);
@@ -604,6 +608,7 @@ async function laadBriefs() { S.briefs = await api.get("/api/briefs"); }
 async function laadConfig() { S.config = await api.get("/api/config"); }
 async function laadKw() { S.kw = await api.get("/api/kostenwacht"); }
 async function laadSysteem() { S.systeem = await api.get("/api/systeem"); }
+async function laadOpen() { S.openJobs = await api.get("/api/jobs/open"); }
 async function laadTrends() { S.trends = (await api.get("/api/trends")).rapport; }
 async function laadLes() { S.les = (await api.get("/api/lessenboek")).tekst; }
 
@@ -623,6 +628,7 @@ async function ververs() {
       laadBriefs().catch(() => {});
       laadLes().catch(() => {});
       laadTrends().catch(() => {});
+      laadOpen().catch(() => {});
     }
     S.vorigeTaken[t.id] = t.status;
   }
@@ -639,7 +645,7 @@ async function naarPagina() {
     if (p === "lessen") await laadLes();
     if (p === "trends") await laadTrends();
     if (p === "campagnes" || p === "vandaag" || p === "claude") await laadBriefs();
-    if (p === "claude") await laadKw();
+    if (p === "claude") await Promise.all([laadKw(), laadOpen()]);
   } catch (e) { toast(e.message, "fout"); }
   renderZijbalk(); renderTopbalk(); renderPagina(true);
   window.scrollTo(0, 0);
@@ -718,6 +724,10 @@ const ACTIES = {
   async "trend-uitwerken"(el) {
     await api.post("/api/claude/video", { link: el.dataset.url, brief: el.dataset.brief || "" });
     toast("🤖 Claude werkt deze video uit. De ideeën verschijnen bij Ideeën.");
+  },
+  async afmaken(el) {
+    await api.post("/api/claude/afmaken", { job: el.dataset.job });
+    toast("Clip-OS maakt deze video af: eerst uitschrijven (als dat nog moet), daarna bedenkt Claude de ideeën.");
   },
   async "claude-dagelijks"() { await api.post("/api/claude/dagelijks"); toast("🤖 Dagelijkse run gestart"); },
   async "claude-campagne"() {

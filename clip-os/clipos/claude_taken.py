@@ -14,6 +14,7 @@ import queue
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import uuid
 from datetime import datetime
@@ -31,7 +32,7 @@ NIET_VERTROUWD = (
     "open de map clip-os in Verkenner, klik met rechts op een lege plek > Openen in Terminal, typ claude, "
     "kies 'Yes, I trust this folder' en typ daarna /exit. Start de taak dan opnieuw."
 )
-TITELS = {"video": "Ideeën voor video", "dagelijks": "Dagelijkse run", "campagne": "Campagne toevoegen", "trends": "Marktonderzoek"}
+TITELS = {"afmaken": "Video afmaken", "video": "Ideeën voor video", "dagelijks": "Dagelijkse run", "campagne": "Campagne toevoegen", "trends": "Marktonderzoek"}
 
 
 def claude_pad() -> str | None:
@@ -41,7 +42,7 @@ def claude_pad() -> str | None:
 def schone_omgeving() -> dict:
     """Omgeving voor Claude zonder betaalde sleutels (anders zou Claude Code per gebruik afrekenen)."""
     env = {k: v for k, v in os.environ.items() if k not in kostenwacht.BETAALDE_SLEUTELS}
-    env.update(PYTHONUTF8="1", PYTHONIOENCODING="utf-8")  # geen emoji-crashes op Windows
+    env.update(PYTHONUTF8="1", PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1")  # live voortgang, geen emoji-crashes  # geen emoji-crashes op Windows
     return env
 
 
@@ -78,8 +79,8 @@ def log_regels(tid: str, n: int = 60) -> list[str]:
 
 
 def prompt_voor(soort: str, data: dict) -> str:
-    if soort == "video":
-        return f"/video {data['link']} {data.get('brief') or ''}".strip()
+    if soort in ("video", "afmaken"):
+        return f"/ideeen {data['job']}"  # downloaden en transcriberen is dan al gedaan door Clip-OS zelf
     if soort == "dagelijks":
         return "/dagelijks"
     if soort == "campagne":
@@ -105,6 +106,11 @@ def valideer(soort: str, data: dict) -> dict:
         return {"tekst": tekst}
     if soort == "dagelijks":
         return {}
+    if soort == "afmaken":
+        job = str(data.get("job") or "").strip()
+        if not (re.fullmatch(r"[\w.\-]{3,120}", job) and (werk.JOBS / job / "job.json").exists()):
+            raise ValueError("Onbekende video")
+        return {"job": job}
     if soort == "trends":
         taal = str(data.get("taal") or "beide").strip().lower()
         if taal not in ("en", "nl", "beide"):
@@ -188,6 +194,57 @@ def _leesbaar(regel: str) -> list[str]:
     return uit
 
 
+class Stop(Exception):
+    """Voorbereiding mislukt of gestopt; de reden staat in het bericht."""
+
+
+def _stap(tid: str, f, args: list[str]) -> tuple[int, str]:
+    """Eén Clip-OS-commando draaien (gewone code, geen Claude) met live uitvoer in het logboek."""
+    proc = subprocess.Popen([sys.executable, "-m", "clipos", *args], cwd=werk.ROOT, env=schone_omgeving(),
+                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True, encoding="utf-8", errors="replace")
+    _huidig.update(id=tid, proc=proc)
+    uit = []
+    for regel in proc.stdout:
+        regel = regel.rstrip()
+        if regel:
+            uit.append(regel)
+            f.write(f"   {_kort(regel, 200)}\n")
+            f.flush()
+    rc = proc.wait()
+    _huidig.update(id=None, proc=None)
+    if lees(tid).get("gestopt_door_jou"):
+        raise Stop("gestopt")
+    return rc, "\n".join(uit)
+
+
+def _voorbereiden(tid: str, taak: dict, f) -> dict:
+    """Downloaden/transcriberen/scouten in Python: dat kan lang duren en hoort niet bij Claude."""
+    soort, data = taak["soort"], dict(taak["data"])
+    if soort == "video":
+        f.write("📥 Video downloaden…\n"); f.flush()
+        rc, uit = _stap(tid, f, ["nieuw", data["link"], *(["--brief", data["brief"]] if data.get("brief") else [])])
+        m = re.search(r"JOB: (\S+)", uit)
+        if rc != 0 or not m:
+            raise Stop("Downloaden mislukt: " + (uit.splitlines()[-1] if uit else f"code {rc}"))
+        data["job"] = m.group(1)
+    if soort in ("video", "afmaken"):
+        zet(tid, data=data)
+        if not (werk.JOBS / data["job"] / "transcript.json").exists():
+            f.write("📝 Uitschrijven wat er gezegd wordt (duurt ongeveer de helft tot de hele lengte van de video; "
+                    "de eerste keer wordt ook het gratis spraakmodel gedownload)…\n"); f.flush()
+            rc, uit = _stap(tid, f, ["transcribeer", data["job"]])
+            if rc != 0:
+                raise Stop("Transcriberen mislukt: " + (uit.splitlines()[-1] if uit else f"code {rc}"))
+        f.write("✅ Voorbereiding klaar. Nu bedenkt Claude de ideeën.\n"); f.flush()
+    if soort == "dagelijks":
+        f.write("🔭 Nieuwe video's van je campagnes zoeken, downloaden en uitschrijven…\n"); f.flush()
+        rc, uit = _stap(tid, f, ["dag"])
+        if rc != 0:
+            raise Stop("Nieuwe video's zoeken mislukt: " + (uit.splitlines()[-1] if uit else f"code {rc}"))
+    return data
+
+
 def _voer_uit(tid: str) -> None:
     taak = lees(tid)
     if taak["status"] != "wacht":
@@ -203,11 +260,19 @@ def _voer_uit(tid: str) -> None:
         return
 
     zet(tid, status="bezig", gestart=inbox.nu(), weggehaalde_sleutels=sleutels)
-    cmd = [pad, "-p", prompt_voor(taak["soort"], taak["data"]), "--output-format", "stream-json", "--verbose",
-           "--permission-mode", "acceptEdits", "--max-turns", MAX_STAPPEN]
     log = MAP / f"{tid}.log"
     with log.open("w", encoding="utf-8") as f:
-        f.write(f"▶ {datetime.now():%H:%M:%S} {taak['titel']} gestart (Pro-login, max {MAX_STAPPEN} stappen)\n")
+        f.write(f"▶ {datetime.now():%H:%M:%S} {taak['titel']} gestart\n")
+        f.flush()
+        try:
+            data = _voorbereiden(tid, taak, f)
+        except Stop as e:
+            gestopt = str(e) == "gestopt"
+            zet(tid, status="gestopt" if gestopt else "fout", klaar=inbox.nu(), fout=None if gestopt else str(e))
+            return
+        cmd = [pad, "-p", prompt_voor(taak["soort"], data), "--output-format", "stream-json", "--verbose",
+               "--permission-mode", "acceptEdits", "--max-turns", MAX_STAPPEN]
+        f.write(f"🧠 Claude aan het werk (Pro-login, max {MAX_STAPPEN} stappen)\n")
         f.flush()
         proc = subprocess.Popen(cmd, cwd=werk.ROOT, env=schone_omgeving(), stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")

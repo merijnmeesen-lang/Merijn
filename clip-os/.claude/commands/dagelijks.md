@@ -11,7 +11,7 @@ Je bent de **Regisseur** van Clip-OS. Voer deze dagelijkse run uit, stap voor st
 
 **Stappen**
 1. `python -m clipos kostenwacht`. Is de exitcode niet 0: stop (zie hierboven).
-2. `python -m clipos dag`. Dit haalt nieuwe video's van de actieve campagnes op en transcribeert ze (gratis, lokaal). Het doet dat per taal (Engels en Nederlands), met een eigen daglimiet per taal. Noteer de regels `TE_DOEN: <job>`.
+2. `python -m clipos te-doen`. Clip-OS heeft vóór deze run zelf al nieuwe video's van je campagnes gedownload en uitgeschreven (`python -m clipos dag`). Noteer de regels `TE_DOEN: <job>`. Ga **niet** zelf `dag` of `transcribeer` draaien: dat duurt te lang voor jou.
 3. Voor elke TE_DOEN-job (één voor één):
    a. Laat de subagent **clip-hookjager** de ideeën zoeken voor die job.
    b. Laat de subagent **clip-copywriter** de teksten schrijven voor die job.

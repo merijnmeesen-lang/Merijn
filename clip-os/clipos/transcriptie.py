@@ -16,6 +16,7 @@ def transcribeer(job_dir: Path, model: str = "small", taal: str | None = None) -
     segmenten, info = wm.transcribe(str(bron), language=taal, word_timestamps=True, vad_filter=True)
 
     data = {"taal": info.language, "duur": info.duration, "segmenten": []}
+    laatst = -1
     for seg in segmenten:
         data["segmenten"].append({
             "start": round(seg.start, 2),
@@ -27,8 +28,10 @@ def transcribeer(job_dir: Path, model: str = "small", taal: str | None = None) -
                 if w.word.strip()
             ],
         })
-        print(f"  {werk.tijd(seg.end)} / {werk.tijd(info.duration)}", end="\r")
-    print()
+        pct = int(seg.end / max(info.duration, 1) * 100) // 5 * 5
+        if pct > laatst:
+            print(f"⏱ {pct}% uitgeschreven ({werk.tijd(seg.end)} van {werk.tijd(info.duration)})", flush=True)
+            laatst = pct
     werk.schrijf_json(job_dir / "transcript.json", data)
     schrijf_leesbaar(job_dir, data)
     return job_dir / "transcript.txt"

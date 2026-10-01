@@ -188,6 +188,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(briefs_lijst())
         if pad == "/api/config":
             return self._json({**productie.config(), "whisper_modellen": WHISPER_MODELLEN})
+        if pad == "/api/jobs/open":
+            return self._json(productie.open_jobs())
         if pad == "/api/systeem":
             return self._json({"versie": bijwerken.versie(), "update": bijwerken.STAAT})
         if pad == "/api/kostenwacht":
@@ -257,7 +259,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"fout": f"Niet gevonden: {e}"}, 404)
 
     def _post(self, pad: str, body: dict):
-        if m := re.fullmatch(r"/api/claude/(video|dagelijks|campagne|trends)", pad):
+        if m := re.fullmatch(r"/api/claude/(video|dagelijks|campagne|trends|afmaken)", pad):
             return self._json({"ok": True, "taak": claude_taken.nieuw(m.group(1), body)})
         if m := re.fullmatch(r"/api/claude/stop/([0-9a-f]{12})", pad):
             return self._json({"ok": True, "taak": claude_taken.stop(m.group(1))})

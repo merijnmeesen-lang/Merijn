@@ -49,6 +49,20 @@ def te_doen() -> list[str]:
     return uit
 
 
+def open_jobs() -> list[dict]:
+    """Bronvideo's waar nog geen ideeën van in de inbox staan (bijv. een onderbroken taak)."""
+    uit = []
+    for job_dir in sorted(werk.JOBS.glob("*"), reverse=True):
+        if not (job_dir / "job.json").exists() or (job_dir / "ideeen_geregistreerd").exists():
+            continue
+        meta = werk.lees_json(job_dir / "job.json")
+        info = werk.lees_json(job_dir / "bron_info.json") if (job_dir / "bron_info.json").exists() else {}
+        uit.append({"job": job_dir.name, "titel": info.get("titel") or meta.get("bron", job_dir.name), "brief": meta.get("brief"),
+                    "gemaakt": meta.get("gemaakt"), "gedownload": (job_dir / "bron.mp4").exists(),
+                    "uitgeschreven": (job_dir / "transcript.json").exists()})
+    return uit[:20]
+
+
 # ---------- ideeën ----------
 
 def valideer_clips(job_dir) -> tuple[list[dict], list[str]]:

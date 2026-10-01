@@ -65,3 +65,30 @@ def test_config_validatie_begrenst_daglimiet():
         dashboard.valideer_config({"whisper_model": "gpt-4"})
     with pytest.raises(ValueError):
         dashboard.valideer_config({"talen": {"../x": {}}})
+
+
+def test_video_en_afmaken_gaan_naar_ideeen_na_voorbereiding(tmp_path, monkeypatch):
+    from clipos import werk
+    assert claude_taken.prompt_voor("video", {"link": "https://youtu.be/x", "job": "20261001-abc"}) == "/ideeen 20261001-abc"
+    assert claude_taken.prompt_voor("afmaken", {"job": "20261001-abc"}) == "/ideeen 20261001-abc"
+    monkeypatch.setattr(werk, "JOBS", tmp_path)
+    (tmp_path / "20261001-abc").mkdir()
+    (tmp_path / "20261001-abc" / "job.json").write_text("{}")
+    assert claude_taken.valideer("afmaken", {"job": "20261001-abc"}) == {"job": "20261001-abc"}
+    for slecht in ("bestaat-niet", "../../etc", ""):
+        with pytest.raises(ValueError):
+            claude_taken.valideer("afmaken", {"job": slecht})
+
+
+def test_open_jobs(tmp_path, monkeypatch):
+    from clipos import productie, werk
+    monkeypatch.setattr(werk, "JOBS", tmp_path)
+    for naam, klaar in (("a-job", False), ("b-job", True)):
+        d = tmp_path / naam
+        d.mkdir()
+        (d / "job.json").write_text('{"bron": "https://youtu.be/x"}')
+        (d / "bron.mp4").write_bytes(b"x")
+        if klaar:
+            (d / "ideeen_geregistreerd").write_text("x")
+    jobs = productie.open_jobs()
+    assert [j["job"] for j in jobs] == ["a-job"] and jobs[0]["gedownload"] and not jobs[0]["uitgeschreven"]
