@@ -165,7 +165,7 @@ def nieuwe_bronnen(per_kanaal: int = 5) -> list[tuple[str, str, str, str | None]
             lijst_url = kanaal.rstrip("/")
             if "youtube.com/@" in lijst_url and not lijst_url.endswith(("/videos", "/streams")):
                 lijst_url += "/videos"
-            opties = {"extract_flat": True, "playlistend": per_kanaal, "quiet": True, "no_warnings": True}
+            opties = werk.ytdlp_opties(extract_flat=True, playlistend=per_kanaal)
             try:
                 with yt_dlp.YoutubeDL(opties) as ydl:
                     info = ydl.extract_info(lijst_url, download=False)

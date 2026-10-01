@@ -27,6 +27,25 @@ def standaardbestanden() -> None:
             shutil.copy2(ROOT / voorbeeld, ROOT / eigen)
 
 
+def systeemcertificaten() -> None:
+    """Gebruik de certificaten van Windows/macOS in plaats van Pythons eigen lijst.
+
+    Antivirus (bijv. Norton) of een school-/bedrijfsnetwerk controleert HTTPS met een eigen
+    certificaat dat alleen in het systeem staat; zonder dit krijg je CERTIFICATE_VERIFY_FAILED.
+    De beveiligingscontrole blijft gewoon aan (zo doet pip het ook)."""
+    try:
+        import truststore
+
+        truststore.inject_into_ssl()
+    except Exception:
+        pass
+
+
+def ytdlp_opties(**extra) -> dict:
+    """Standaardopties voor yt-dlp: stil, en de certificaten van het systeem gebruiken."""
+    return {"quiet": True, "no_warnings": True, "compat_opts": ["no-certifi"], **extra}
+
+
 def ffmpeg() -> str:
     """Systeem-ffmpeg als die er is, anders de gratis meegeleverde van imageio-ffmpeg."""
     pad = shutil.which("ffmpeg")

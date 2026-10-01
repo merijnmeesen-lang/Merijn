@@ -42,3 +42,9 @@ def test_trends_taak_validatie():
     for slecht in ({"taal": "de"}, {"taal": "en", "onderwerp": "x" * 81}, {"taal": "en", "onderwerp": "a; rm -rf /"}):
         with pytest.raises(ValueError):
             claude_taken.valideer("trends", slecht)
+
+
+def test_ytdlp_gebruikt_systeemcertificaten():
+    from clipos import werk
+    opties = werk.ytdlp_opties(skip_download=True)
+    assert "no-certifi" in opties["compat_opts"] and opties["skip_download"] and opties["quiet"]

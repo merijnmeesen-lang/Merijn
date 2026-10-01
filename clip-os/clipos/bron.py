@@ -17,15 +17,13 @@ def haal_binnen(bron: str, job_dir: Path) -> Path:
 
     import yt_dlp  # gratis; draait in dit proces, dus het netwerk-slot geldt ook hier
 
-    opties = {
-        "outtmpl": str(job_dir / "bron.%(ext)s"),
-        "format": "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/bv*[height<=1080]+ba/b",
-        "merge_output_format": "mp4",
-        "ffmpeg_location": werk.ffmpeg(),
-        "noplaylist": True,
-        "quiet": True,
-        "no_warnings": True,
-    }
+    opties = werk.ytdlp_opties(
+        outtmpl=str(job_dir / "bron.%(ext)s"),
+        format="bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/bv*[height<=1080]+ba/b",
+        merge_output_format="mp4",
+        ffmpeg_location=werk.ffmpeg(),
+        noplaylist=True,
+    )
     with yt_dlp.YoutubeDL(opties) as ydl:
         info = ydl.extract_info(bron, download=True)
     werk.schrijf_json(job_dir / "bron_info.json", {

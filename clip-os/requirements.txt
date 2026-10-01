@@ -3,3 +3,4 @@ faster-whisper>=1.0      # spraak → tekst, lokaal
 yt-dlp                   # video's downloaden
 opencv-python-headless>=4.8,<5   # gezichtsvolging (v5 heeft de ingebouwde gezichtsdetector niet meer)
 imageio-ffmpeg>=0.5      # levert een gratis ffmpeg mee (geen aparte installatie nodig)
+truststore>=0.9         # certificaten van Windows/macOS gebruiken (werkt ook met antivirus die HTTPS controleert)

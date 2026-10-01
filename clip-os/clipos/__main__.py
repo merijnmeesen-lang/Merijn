@@ -20,6 +20,8 @@ def utf8_uitvoer() -> None:
 
 def main(argv: list[str] | None = None) -> int:
     utf8_uitvoer()
+    from .werk import systeemcertificaten
+    systeemcertificaten()
     p = argparse.ArgumentParser(prog="python -m clipos", description="Clip-OS: lange video → kant-en-klare clips (gratis, lokaal).")
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -136,6 +138,9 @@ def main(argv: list[str] | None = None) -> int:
         try:
             videos = trends.kanaal(a.kanaal, a.max, a.min_minuten) if a.kanaal else trends.zoek(a.zoekterm, a.periode, a.max, a.min_minuten)
         except yt_dlp.utils.DownloadError as e:
+            if "CERTIFICATE_VERIFY_FAILED" in str(e):
+                raise SystemExit("YouTube geweigerd door een beveiligingscertificaat (vaak antivirus zoals Norton). "
+                                 "Oplossing: dubbelklik update.bat, dan gebruikt Clip-OS de certificaten van Windows.")
             raise SystemExit(f"YouTube niet bereikbaar of niets gevonden: {str(e)[:300]}")
         print(json.dumps(trends.verrijk(videos), ensure_ascii=False, indent=1))
     elif a.cmd == "trends-klaar":

@@ -25,6 +25,8 @@ in gewoon Nederlands uit en geef stap-voor-stap instructies.
 - `clipos/trends.py` + agent `clip-trendonderzoeker` + `/trends`: marktonderzoek (pagina Trends).
 - Updates: `update.bat` (git pull). Eenmalige overstap vanaf de zip-versie: `overzetten.bat`.
 - Werkdata (niet in git): `jobs/`, `output/`, `data/`.
+- yt-dlp altijd via `werk.ytdlp_opties(...)` aanroepen (systeemcertificaten; nodig bij antivirus zoals Norton).
+  Uitvoer is UTF-8 (`utf8_uitvoer` in `__main__`); Windows gebruikt anders cp1252 en crasht op emoji.
 
 ## Na een wijziging
 - Tests: `python -m pytest` (installeer eerst `pip install pytest` in de venv als dat nog niet is gebeurd).

@@ -94,7 +94,7 @@ def _details(urls: list[str]) -> list[dict]:
     import yt_dlp
 
     uit = []
-    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "skip_download": True}) as ydl:
+    with yt_dlp.YoutubeDL(werk.ytdlp_opties(skip_download=True)) as ydl:
         for url in urls:
             try:
                 uit.append(normaliseer(ydl.extract_info(url, download=False)))
@@ -106,7 +106,7 @@ def _details(urls: list[str]) -> list[dict]:
 def _plat(url: str, aantal: int) -> list[dict]:
     import yt_dlp
 
-    with yt_dlp.YoutubeDL({"extract_flat": "in_playlist", "playlistend": aantal, "quiet": True, "no_warnings": True}) as ydl:
+    with yt_dlp.YoutubeDL(werk.ytdlp_opties(extract_flat="in_playlist", playlistend=aantal)) as ydl:
         info = ydl.extract_info(url, download=False)
     return [e for e in (info.get("entries") or []) if e]
 
