@@ -6,8 +6,9 @@ from pathlib import Path
 from statistics import median
 
 
-def gezicht_posities(bron: Path, start: float, end: float, stap: float = 0.5) -> list[tuple[float, float | None]]:
-    """(tijd t.o.v. clipstart, x-midden van het grootste gezicht als fractie 0..1 of None)."""
+def gezicht_posities(bron: Path, start: float, end: float, stap: float = 0.5) -> list[tuple]:
+    """(tijd t.o.v. clipstart, x-midden van het grootste gezicht, onderkant van het gezicht incl. kin)
+    als fracties 0..1 van het bronbeeld, of None als er geen gezicht is."""
     import cv2
 
     cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
@@ -25,10 +26,11 @@ def gezicht_posities(bron: Path, start: float, end: float, stap: float = 0.5) ->
         grijs = cv2.cvtColor(klein, cv2.COLOR_BGR2GRAY)
         gezichten = cascade.detectMultiScale(grijs, scaleFactor=1.1, minNeighbors=6, minSize=(24, 24))
         if len(gezichten):
-            x, _, gw, _ = max(gezichten, key=lambda g: g[2] * g[3])
-            uit.append((t - start, (x + gw / 2) / klein.shape[1]))
+            x, y, gw, gh = max(gezichten, key=lambda g: g[2] * g[3])
+            onder = min(1.0, (y + gh * 1.25) / klein.shape[0])  # +25%: de detector stopt rond de mond, kin en hals komen eronder
+            uit.append((t - start, (x + gw / 2) / klein.shape[1], onder))
         else:
-            uit.append((t - start, None))
+            uit.append((t - start, None, None))
         t += stap
     cap.release()
     return uit
@@ -45,7 +47,8 @@ def crop_segmenten(posities, duur: float, drempel: float = 0.08, venster: int = 
     if not posities:
         return [(0.0, 0.5)]
     xs, laatste = [], None
-    for _, x in posities:
+    for p in posities:
+        x = p[1]
         laatste = x if x is not None else laatste
         xs.append(laatste)
     eerste = next((x for x in xs if x is not None), 0.5)
@@ -61,6 +64,20 @@ def crop_segmenten(posities, duur: float, drempel: float = 0.08, venster: int = 
             huidig = glad[i]
             segmenten.append((posities[i][0], huidig))
     return [(t, x) for t, x in segmenten if t < duur]
+
+
+HOOK_STANDAARD_Y = 300   # bovenkant van de hook (in een 1080x1920-beeld) als er geen gezicht bekend is
+HOOK_MAX_Y = 1150        # lager niet: daar beginnen de ondertitels
+
+
+def hook_y(posities, hook_duur: float = 3.0, hoogte: int = 1920) -> int:
+    """Waar de hook moet staan zodat hij het gezicht niet bedekt: net onder het (laagste) gezicht
+    in de eerste seconden. De crop gebruikt de volle hoogte, dus fractie × 1920 = positie in beeld."""
+    onder = [p[2] for p in posities if len(p) > 2 and p[2] is not None and p[0] <= hook_duur]
+    if not onder:
+        return HOOK_STANDAARD_Y
+    y = int(max(onder) * hoogte) + 40
+    return max(HOOK_STANDAARD_Y, min(HOOK_MAX_Y, y))
 
 
 def crop_x_expressie(segmenten, bron_breedte: int, crop_breedte: int) -> str:

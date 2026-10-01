@@ -36,21 +36,23 @@ def render_clip(job_dir: Path, clip: dict, modus: str = "auto") -> Path:
     clip_dir = job_dir / "clips" / clip["id"]
     clip_dir.mkdir(parents=True, exist_ok=True)
     woorden = woorden_in(transcript, start, end)
-    (clip_dir / "subs.ass").write_text(maak_ass(woorden, start, duur, clip.get("hook", "")), encoding="utf-8")
-
     W, H = info["breedte"], info["hoogte"]
     breed = W / max(H, 1) > 9 / 16 + 0.01
     segmenten = None
+    hook_top = reframe.HOOK_STANDAARD_Y  # bij 'vol' staat de hook in de vervaagde band bovenin
     if breed and modus in ("auto", "volg"):
         posities = reframe.gezicht_posities(bron, start, end)
-        gevonden = sum(1 for _, x in posities if x is not None)
+        gevonden = sum(1 for p in posities if p[1] is not None)
         if modus == "volg" or gevonden >= 0.3 * max(len(posities), 1):
             segmenten = reframe.crop_segmenten(posities, duur)
+            hook_top = reframe.hook_y(posities)
             modus = "volg"
         else:
             modus = "vol"
     elif modus == "auto":
         modus = "vol"
+
+    (clip_dir / "subs.ass").write_text(maak_ass(woorden, start, duur, clip.get("hook", ""), hook_y=hook_top), encoding="utf-8")
 
     if modus == "volg" and breed:
         crop_w = even(H * 9 / 16)
@@ -77,7 +79,7 @@ def render_clip(job_dir: Path, clip: dict, modus: str = "auto") -> Path:
     werk.draai(cmd, cwd=clip_dir)
     werk.schrijf_json(clip_dir / "render.json", {
         "start": round(start, 2), "end": round(end, 2), "duur": round(duur, 2),
-        "modus": modus, "crop_segmenten": segmenten,
+        "modus": modus, "crop_segmenten": segmenten, "hook_y": hook_top,
     })
     return clip_dir / "video.mp4"
 

@@ -20,7 +20,7 @@ def test_groepeer_breekt_op_zinseinde_en_max_woorden():
 
 def test_maak_ass_markeert_huidig_woord_en_hook():
     ass = maak_ass([w(10.0, "Hallo"), w(10.4, "wereld")], clip_start=10.0, duur=5.0, hook="Kijk dit")
-    assert "Hook,,0,0,0,,Kijk dit" in ass
+    assert "Hook,,0,0,0,,{\\an8\\pos(540,300)}Kijk dit" in ass
     assert "{\\c&H0000E5FF&}HALLO{\\c&H00FFFFFF&} WERELD" in ass
     assert "HALLO {\\c&H0000E5FF&}WERELD" in ass
 
@@ -60,3 +60,25 @@ def test_audio_via_ffmpeg(tmp_path):
                 "-t", "2", "-c:a", "aac", str(video)])
     audio = transcriptie.laad_audio(video)
     assert audio.dtype.name == "float32" and abs(len(audio) / transcriptie.SAMPLERATE - 2.0) < 0.1
+
+
+def test_losse_getallen_en_leestekens_worden_aan_elkaar_geplakt():
+    from clipos.ondertitels import plak_aanhangsels
+    woorden = [w(0, "13"), w(0.3, ",000"), w(0.6, "employees."), w(1.0, "It"), w(1.3, "'s"), w(1.6, "50"), w(1.9, "%")]
+    assert [x["woord"] for x in plak_aanhangsels(woorden)] == ["13,000", "employees.", "It's", "50%"]
+    ass = maak_ass(woorden[:3], 0, 3)
+    assert "13,000" in ass and "13 ,000" not in ass
+
+
+def test_hook_komt_onder_het_gezicht():
+    # gezicht loopt tot 40% van de hoogte -> hook net daaronder (40% van 1920 + 40)
+    assert reframe.hook_y([(0.0, 0.5, 0.40), (0.5, 0.5, 0.38), (5.0, 0.5, 0.9)]) == 808
+    # geen gezicht bekend -> standaard bovenin
+    assert reframe.hook_y([(0.0, None, None)]) == reframe.HOOK_STANDAARD_Y
+    # gezicht vult bijna het hele beeld -> niet lager dan net boven de ondertitels
+    assert reframe.hook_y([(0.0, 0.5, 0.95)]) == reframe.HOOK_MAX_Y
+
+
+def test_crop_segmenten_werkt_met_hoogte_info():
+    posities = [(i * 0.5, 0.25 if i < 10 else 0.75, 0.4) for i in range(20)]
+    assert len(reframe.crop_segmenten(posities, 10)) == 2

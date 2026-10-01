@@ -58,16 +58,31 @@ def groepeer(woorden: list[dict], max_woorden: int = 3, max_tekens: int = 18, ma
     return groepen
 
 
-def maak_ass(woorden: list[dict], clip_start: float, duur: float, hook: str = "", hook_duur: float = 3.0) -> str:
+AANHANGSEL = re.compile(r"^([,.!?%:;)\]}…]|['’](s|t|re|ve|ll|d|m)\b)", re.I)
+
+
+def plak_aanhangsels(woorden: list[dict]) -> list[dict]:
+    """Whisper levert soms losse stukjes: '13' + ',000', 'it' + "'s", '50' + '%'. Die horen aan het vorige woord vast."""
+    uit: list[dict] = []
+    for w in woorden:
+        if uit and AANHANGSEL.match(w["woord"]):
+            uit[-1] = {**uit[-1], "woord": uit[-1]["woord"] + w["woord"], "end": max(uit[-1]["end"], w["end"])}
+        else:
+            uit.append(dict(w))
+    return uit
+
+
+def maak_ass(woorden: list[dict], clip_start: float, duur: float, hook: str = "", hook_duur: float = 3.0,
+             hook_y: int = 300) -> str:
     """woorden: absolute tijden uit het transcript; ze worden omgerekend naar clip-tijd."""
     rel = [
         {"start": max(0.0, w["start"] - clip_start), "end": min(duur, w["end"] - clip_start), "woord": schoon(w["woord"]).upper()}
-        for w in woorden
-        if schoon(w["woord"])
+        for w in plak_aanhangsels([w for w in woorden if schoon(w["woord"])])
     ]
     regels = [KOP]
     if hook:
-        regels.append(f"Dialogue: 1,{ass_tijd(0)},{ass_tijd(min(hook_duur, duur))},Hook,,0,0,0,,{schoon(hook)}\n")
+        regels.append(f"Dialogue: 1,{ass_tijd(0)},{ass_tijd(min(hook_duur, duur))},Hook,,0,0,0,,"
+                      f"{{\\an8\\pos(540,{int(hook_y)})}}{schoon(hook)}\n")
 
     groepen = groepeer(rel)
     for gi, groep in enumerate(groepen):
