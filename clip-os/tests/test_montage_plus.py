@@ -144,3 +144,34 @@ def test_render_knipt_stiltes_en_houdt_beeld_en_geluid(tmp_path, monkeypatch):
     assert r["knippen"] == 1 and r["ingekort"] > 3.0
     assert (info["breedte"], info["hoogte"]) == (1080, 1920) and info["audio"]
     assert abs(info["duur"] - r["duur"]) < 0.3
+
+
+# ---------- camerawissels: nooit een oude positie meenemen naar een ander shot ----------
+
+def test_shot_zonder_gezicht_erft_geen_positie_en_krijgt_vol_beeld():
+    # shot 1: gezicht links; shot 2 (vanaf 3 s): alleen een achterhoofd (geen gezicht); shot 3 (vanaf 6 s): gezicht rechts
+    posities = [(i * 0.5, 0.25 if i < 6 else (None if i < 12 else 0.75)) for i in range(18)]
+    seg = reframe.crop_segmenten(posities, 9.0, knippen=[3.0, 6.0])
+    assert seg == [(0.0, 0.25), (3.0, None), (6.0, 0.75)]
+    assert reframe.geen_gezicht_intervallen(seg, 9.0) == [(3.0, 6.0)]
+
+
+def test_nieuwe_camera_springt_direct_op_de_knip():
+    # zonder knip-info zou de mediaan pas later omspringen; met knip precies op 4.0 s
+    posities = [(i * 0.5, 0.3 if i < 8 else 0.7) for i in range(16)] + [(4.15, 0.7)]
+    seg = reframe.crop_segmenten(sorted(posities), 8.0, knippen=[4.0])
+    assert seg == [(0.0, 0.3), (4.0, 0.7)]
+
+
+def test_losse_toevalstreffer_telt_niet_als_gezicht():
+    posities = [(i * 0.5, 0.6 if i == 2 else None) for i in range(10)]
+    assert reframe.crop_segmenten(posities, 5.0) == [(0.0, None)]
+
+
+def test_shotgrenzen_worden_gevonden(tmp_path):
+    video = tmp_path / "v.mp4"
+    werk.draai([werk.ffmpeg(), "-y", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=25:duration=3",
+                "-f", "lavfi", "-i", "color=c=red:size=640x360:rate=25:duration=3",
+                "-filter_complex", "[0:v][1:v]concat=n=2:v=1[v]", "-map", "[v]", "-c:v", "libx264", "-preset", "ultrafast", str(video)])
+    knippen = reframe.shot_grenzen(video, 0.0, 6.0)
+    assert len(knippen) == 1 and abs(knippen[0] - 3.0) < 0.1

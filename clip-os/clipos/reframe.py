@@ -15,7 +15,7 @@ def _detector():
     import cv2
 
     if MODEL.exists() and hasattr(cv2, "FaceDetectorYN"):
-        yunet = cv2.FaceDetectorYN.create(str(MODEL), "", (320, 320), 0.6)
+        yunet = cv2.FaceDetectorYN.create(str(MODEL), "", (320, 320), 0.55)
 
         def detect(beeld):
             yunet.setInputSize((beeld.shape[1], beeld.shape[0]))
@@ -31,7 +31,25 @@ def _detector():
     return detect_haar
 
 
-def gezicht_posities(bron: Path, start: float, end: float, stap: float = 0.5) -> list[tuple]:
+def shot_grenzen(bron: Path, start: float, end: float, drempel: float = 0.3) -> list[float]:
+    """Tijden (t.o.v. clipstart) waarop de camera wisselt naar een ander shot, via de scènedetectie van ffmpeg."""
+    import re
+    import subprocess
+
+    from . import werk
+
+    cmd = [werk.ffmpeg(), "-hide_banner", "-nostats", "-ss", f"{start:.3f}", "-t", f"{end - start:.3f}", "-i", str(bron),
+           "-an", "-vf", f"scale=320:-2,select='gt(scene\\,{drempel})',showinfo", "-f", "null", "-"]
+    res = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
+    tijden = sorted(float(m) for m in re.findall(r"pts_time:\s*([0-9.]+)", res.stderr))
+    uit = []
+    for t in tijden:  # twee knippen vlak na elkaar (flits/overgang) tellen als één
+        if 0.2 < t < end - start - 0.1 and (not uit or t - uit[-1] > 0.4):
+            uit.append(round(t, 3))
+    return uit
+
+
+def gezicht_posities(bron: Path, start: float, end: float, stap: float = 0.5, knippen: list[float] | None = None) -> list[tuple]:
     """Per meting: (tijd t.o.v. clipstart, x-midden grootste gezicht, onderkant grootste gezicht incl. kin, gezichten).
 
     Alles als fracties 0..1 van het bronbeeld (None als er geen gezicht is). `gezichten` bevat de twee grootste
@@ -41,14 +59,19 @@ def gezicht_posities(bron: Path, start: float, end: float, stap: float = 0.5) ->
     detect = _detector()
     cap = cv2.VideoCapture(str(bron))
     uit = []
-    t = start
-    while t < end:
+    tijden, t = [], 0.0
+    while t < end - start:
+        tijden.append(round(t, 3))
+        t += stap
+    tijden = sorted(set(tijden) | {round(k + 0.15, 3) for k in (knippen or []) if k + 0.15 < end - start})
+    for t in tijden:
+        t = start + t
         cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000)
         ok, frame = cap.read()
         if not ok:
             break
         h, w = frame.shape[:2]
-        schaal = 640 / w if w > 640 else 1.0
+        schaal = 960 / w if w > 960 else 1.0  # 960 breed: ook kleinere gezichten verderop in beeld
         klein = cv2.resize(frame, None, fx=schaal, fy=schaal) if schaal != 1.0 else frame
         kh, kb = klein.shape[:2]
         gezichten = sorted(detect(klein), key=lambda g: -(g[2] * g[3]))[:2]
@@ -58,7 +81,6 @@ def gezicht_posities(bron: Path, start: float, end: float, stap: float = 0.5) ->
             uit.append((t - start, lijst[0]["cx"], lijst[0]["onder"], lijst))
         else:
             uit.append((t - start, None, None, []))
-        t += stap
     cap.release()
     return uit
 
@@ -95,34 +117,65 @@ def split_crop(persoon: dict, bron_b: int, bron_h: int) -> tuple[int, int, int, 
     return cb, ch, max(0, min(bron_b - cb, x)), max(0, min(bron_h - ch, y))
 
 
-def crop_segmenten(posities, duur: float, drempel: float = 0.08, venster: int = 5) -> list[tuple[float, float]]:
-    """Zet ruwe gezichtsposities om in rustige stukken [(vanaf_tijd, x_fractie)].
+def crop_segmenten(posities, duur: float, drempel: float = 0.08, venster: int = 5,
+                   knippen: list[float] | None = None, min_gezicht: float = 0.25) -> list[tuple[float, float | None]]:
+    """Zet ruwe gezichtsposities om in rustige stukken [(vanaf_tijd, x_fractie of None)].
 
-    - ontbrekende metingen erven de vorige positie (of het midden);
-    - een mediaanfilter haalt uitschieters weg;
-    - de camera verspringt pas als het gezicht minstens `drempel` verschuift
-      en dat twee metingen achter elkaar zo blijft (geen trillend beeld).
+    - per camerashot apart (`knippen`): een positie wordt nooit meegenomen naar een ander shot, anders
+      blijft de uitsnede na een camerawissel hangen op de plek van het vorige gezicht (bijv. een achterhoofd);
+    - een shot waarin (bijna) geen gezicht te zien is, krijgt x = None: dan toont de render het hele beeld
+      met wazige balken in plaats van een gok;
+    - binnen een shot: ontbrekende metingen erven de vorige positie, een mediaanfilter haalt uitschieters weg
+      en de uitsnede verspringt pas als het gezicht minstens `drempel` verschuift en dat zo blijft.
     """
     if not posities:
         return [(0.0, 0.5)]
-    xs, laatste = [], None
-    for p in posities:
-        x = p[1]
-        laatste = x if x is not None else laatste
-        xs.append(laatste)
-    eerste = next((x for x in xs if x is not None), 0.5)
-    xs = [eerste if x is None else x for x in xs]
-    half = venster // 2
-    glad = [median(xs[max(0, i - half): i + half + 1]) for i in range(len(xs))]
+    grenzen = [0.0] + sorted(k for k in (knippen or []) if 0 < k < duur)
+    segmenten: list[tuple[float, float | None]] = []
+    for nr, begin in enumerate(grenzen):
+        eind = grenzen[nr + 1] if nr + 1 < len(grenzen) else float("inf")
+        shot = [p for p in posities if begin <= p[0] < eind]
+        gevonden = [p[1] for p in shot if p[1] is not None]
+        if not shot or len(gevonden) < max(1, min_gezicht * len(shot)):
+            x_shot = None if shot else (segmenten[-1][1] if segmenten else 0.5)
+            if not segmenten or segmenten[-1][1] != x_shot or x_shot is None:
+                segmenten.append((begin, x_shot))
+            continue
+        xs, laatste = [], None
+        for p in shot:
+            laatste = p[1] if p[1] is not None else laatste
+            xs.append(laatste)
+        xs = [gevonden[0] if x is None else x for x in xs]
+        half = venster // 2
+        glad = [median(xs[max(0, i - half): i + half + 1]) for i in range(len(xs))]
+        huidig = glad[0]
+        segmenten.append((begin, huidig))
+        for i in range(1, len(glad)):
+            volgende = glad[i + 1] if i + 1 < len(glad) else glad[i]
+            if abs(glad[i] - huidig) > drempel and abs(volgende - huidig) > drempel:
+                huidig = glad[i]
+                segmenten.append((shot[i][0], huidig))
+    # opeenvolgende stukken met (bijna) dezelfde positie samenvoegen
+    samen = [segmenten[0]]
+    for t, x in segmenten[1:]:
+        vorige = samen[-1][1]
+        if x is not None and vorige is not None and abs(x - vorige) <= drempel / 2:
+            continue
+        if x is None and vorige is None:
+            continue
+        samen.append((t, x))
+    return [(t, x) for t, x in samen if t < duur]
 
-    segmenten = [(0.0, glad[0])]
-    huidig = glad[0]
-    for i in range(1, len(glad)):
-        volgende = glad[i + 1] if i + 1 < len(glad) else glad[i]
-        if abs(glad[i] - huidig) > drempel and abs(volgende - huidig) > drempel:
-            huidig = glad[i]
-            segmenten.append((posities[i][0], huidig))
-    return [(t, x) for t, x in segmenten if t < duur]
+
+def geen_gezicht_intervallen(segmenten, duur: float) -> list[tuple[float, float]]:
+    """Stukken (in clip-tijd) waarin geen gezicht is: daar het hele beeld met wazige balken."""
+    uit = []
+    for i, (t, x) in enumerate(segmenten):
+        if x is None:
+            eind = segmenten[i + 1][0] if i + 1 < len(segmenten) else duur
+            if eind > t:
+                uit.append((t, eind))
+    return uit
 
 
 HOOK_STANDAARD_Y = 300   # bovenkant van de hook (in een 1080x1920-beeld) als er geen gezicht bekend is
@@ -141,8 +194,8 @@ def hook_y(posities, hook_duur: float = 3.0, hoogte: int = 1920) -> int:
 
 def crop_x_expressie(segmenten, bron_breedte: int, crop_breedte: int) -> str:
     """ffmpeg-expressie voor de x-positie van de crop (stukjes met vaste positie)."""
-    def px(frac: float) -> int:
-        x = int(round(frac * bron_breedte - crop_breedte / 2))
+    def px(frac: float | None) -> int:
+        x = int(round((0.5 if frac is None else frac) * bron_breedte - crop_breedte / 2))
         return max(0, min(bron_breedte - crop_breedte, x))
 
     expr = str(px(segmenten[-1][1]))

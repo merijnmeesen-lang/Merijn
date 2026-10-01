@@ -24,6 +24,14 @@ def bepaal_grenzen(clip: dict, transcript: dict, bron_duur: float) -> tuple[floa
     return max(0.0, start), min(bron_duur, end)
 
 
+def VOL_BEELD(invoer: str, uitvoer: str, p: str = "") -> list[str]:
+    """Het hele (liggende) beeld in het midden, met een wazige, iets donkere versie als achtergrond."""
+    return [f"{invoer}split=2[{p}va][{p}vf]",
+            f"[{p}va]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=30:2,eq=brightness=-0.08[{p}bg]",
+            f"[{p}vf]scale=1080:1920:force_original_aspect_ratio=decrease[{p}fg]",
+            f"[{p}bg][{p}fg]overlay=(W-w)/2:(H-h)/2,setsar=1{uitvoer}"]
+
+
 def render_clip(job_dir: Path, clip: dict, modus: str = "auto", montage: dict | None = None) -> Path:
     """Maak één clip: knippen (stiltes eruit), 9:16 (gezicht volgen / split-screen / wazige balken),
     zooms, ondertitels met hook, en geluid op YouTube-niveau."""
@@ -51,15 +59,18 @@ def render_clip(job_dir: Path, clip: dict, modus: str = "auto", montage: dict | 
     W, H = info["breedte"], info["hoogte"]
     breed = W / max(H, 1) > 9 / 16 + 0.01
     hook_top, onder_pos, crop_segmenten, split = reframe.HOOK_STANDAARD_Y, None, None, None
+    vol_stukken: list[tuple[float, float]] = []
     if breed and modus in ("auto", "volg", "split"):
-        posities = reframe.gezicht_posities(bron, start, end)
+        knippen_bron = reframe.shot_grenzen(bron, start, end)
+        posities = reframe.gezicht_posities(bron, start, end, knippen=knippen_bron)
         gevonden = sum(1 for p in posities if p[1] is not None)
         split = reframe.split_analyse(posities) if (montage["split_screen"] or modus == "split") and modus != "volg" else None
         if split:
             modus, hook_top, onder_pos = "split", 40, (540, 960)
         elif modus == "volg" or gevonden >= 0.3 * max(len(posities), 1):
-            ruw = reframe.crop_segmenten(posities, end - start)
+            ruw = reframe.crop_segmenten(posities, end - start, knippen=knippen_bron)
             crop_segmenten = [(round(tempo.remap(start + t, stukken), 3), x) for t, x in ruw]
+            vol_stukken = reframe.geen_gezicht_intervallen(crop_segmenten, duur)
             hook_top = reframe.hook_y(posities)
             modus = "volg"
         else:
@@ -84,7 +95,14 @@ def render_clip(job_dir: Path, clip: dict, modus: str = "auto", montage: dict | 
     if modus == "volg":
         crop_w = even(H * 9 / 16)
         x = reframe.crop_x_expressie(crop_segmenten or [(0.0, 0.5)], W, crop_w)
-        graaf.append(f"{v}crop={crop_w}:{H}:{x}:0,scale=1080:1920:flags=lanczos,setsar=1[vb]")
+        if vol_stukken:
+            # shots zonder gezicht (bijv. over de schouder gefilmd): daar het hele beeld met wazige balken
+            graaf += [f"{v}split=2[c0][c1]",
+                      f"[c0]crop={crop_w}:{H}:{x}:0,scale=1080:1920:flags=lanczos,setsar=1[vc]",
+                      *VOL_BEELD("[c1]", "[vv]", "w"),
+                      f"[vc][vv]overlay=0:0:enable={tempo.tijd_expressie(vol_stukken)}[vb]"]
+        else:
+            graaf.append(f"{v}crop={crop_w}:{H}:{x}:0,scale=1080:1920:flags=lanczos,setsar=1[vb]")
     elif modus == "split":
         cb1, ch1, x1, y1 = reframe.split_crop(split["links"], W, H)
         cb2, ch2, x2, y2 = reframe.split_crop(split["rechts"], W, H)
@@ -93,10 +111,7 @@ def render_clip(job_dir: Path, clip: dict, modus: str = "auto", montage: dict | 
                   f"[s2]crop={cb2}:{ch2}:{x2}:{y2},scale=1080:960:flags=lanczos,setsar=1[onder]",
                   "[boven][onder]vstack=inputs=2[vb]"]
     else:
-        graaf += [f"{v}split=2[va][vf]",
-                  "[va]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=30:2,eq=brightness=-0.08[bg]",
-                  "[vf]scale=1080:1920:force_original_aspect_ratio=decrease[fg]",
-                  "[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[vb]"]
+        graaf += VOL_BEELD(v, "[vb]")
     v = "[vb]"
 
     # 5. zooms (alleen als het beeld gevuld is; bij wazige balken niet)
@@ -126,6 +141,7 @@ def render_clip(job_dir: Path, clip: dict, modus: str = "auto", montage: dict | 
         "start": round(start, 2), "end": round(end, 2), "duur": round(duur, 2), "bron_duur": round(end - start, 2),
         "ingekort": round(end - start - duur, 1), "knippen": len(stukken) - 1, "modus": modus,
         "crop_segmenten": crop_segmenten, "split": split, "hook_y": hook_top,
+        "shots_zonder_gezicht": len(vol_stukken),
         "zooms": len(punch) + len(sterk),
     })
     return clip_dir / "video.mp4"
