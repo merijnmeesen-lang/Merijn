@@ -50,3 +50,13 @@ def test_grenzen_vallen_op_woorden():
     transcript = {"segmenten": [{"woorden": [w(9.8, "a"), w(10.5, "b"), w(19.9, "c")]}]}
     start, end = bepaal_grenzen({"start": 10.0, "end": 20.0}, transcript, 100)
     assert start < 9.8 and end > 20.2
+
+
+def test_audio_via_ffmpeg(tmp_path):
+    """Geluid uitpakken met ffmpeg (niet via PyAV) levert 16 kHz mono float32."""
+    from clipos import transcriptie, werk
+    video = tmp_path / "t.mp4"
+    werk.draai([werk.ffmpeg(), "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
+                "-t", "2", "-c:a", "aac", str(video)])
+    audio = transcriptie.laad_audio(video)
+    assert audio.dtype.name == "float32" and abs(len(audio) / transcriptie.SAMPLERATE - 2.0) < 0.1

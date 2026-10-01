@@ -2,18 +2,41 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
 from pathlib import Path
 
 from . import werk
 
 
+SAMPLERATE = 16000
+
+
+def laad_audio(bron: Path):
+    """Geluid uit de video halen met ffmpeg (16 kHz mono, float32), zoals faster-whisper het wil.
+
+    Bewust niet via faster-whisper zelf: dat gebruikt PyAV, en nieuwe PyAV-versies (bijv. bij de
+    nieuwste Python op Windows) passen niet meer bij faster-whisper ('metadata_errors'-fout)."""
+    import numpy as np
+
+    cmd = [werk.ffmpeg(), "-nostdin", "-hide_banner", "-loglevel", "error", "-i", str(bron),
+           "-vn", "-ac", "1", "-ar", str(SAMPLERATE), "-f", "f32le", "-"]
+    res = subprocess.run(cmd, capture_output=True)
+    if res.returncode != 0 or not res.stdout:
+        raise RuntimeError("Geluid uit de video halen mislukt: " + res.stderr.decode("utf-8", "replace")[-300:])
+    return np.frombuffer(res.stdout, dtype=np.float32)
+
+
 def transcribeer(job_dir: Path, model: str = "small", taal: str | None = None) -> Path:
+    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")  # onschuldige Windows-waarschuwing
     from faster_whisper import WhisperModel
 
     bron = job_dir / "bron.mp4"
-    print(f"Spraakmodel '{model}' laden (eerste keer: eenmalige gratis download)…")
+    print("Geluid uit de video halen…", flush=True)
+    audio = laad_audio(bron)
+    print(f"Spraakmodel '{model}' laden (eerste keer: eenmalige gratis download)…", flush=True)
     wm = WhisperModel(model, device="cpu", compute_type="int8")
-    segmenten, info = wm.transcribe(str(bron), language=taal, word_timestamps=True, vad_filter=True)
+    segmenten, info = wm.transcribe(audio, language=taal, word_timestamps=True, vad_filter=True)
 
     data = {"taal": info.language, "duur": info.duration, "segmenten": []}
     laatst = -1
