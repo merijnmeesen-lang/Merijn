@@ -27,7 +27,8 @@ def test_ongeldige_taken_worden_geweigerd(soort, data):
 
 
 def test_prompts():
-    assert claude_taken.prompt_voor("video", {"link": "https://youtu.be/x", "brief": ""}) == "/video https://youtu.be/x"
+    # video: Clip-OS downloadt en transcribeert eerst zelf; Claude krijgt daarna alleen het denkwerk
+    assert claude_taken.prompt_voor("video", {"link": "https://youtu.be/x", "brief": "", "job": "j1"}) == "/ideeen j1"
     assert claude_taken.prompt_voor("dagelijks", {}) == "/dagelijks"
 
 
