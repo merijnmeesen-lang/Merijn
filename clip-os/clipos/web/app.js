@@ -527,6 +527,20 @@ function markdown(tekst) {
 }
 const paginaLessen = () => `<div class="kaart proza">${S.les ? markdown(S.les) : "<p class='zacht'>Laden…</p>"}</div>`;
 
+function bijwerkKaart() {
+  const s = S.systeem;
+  if (!s) return "";
+  const v = s.versie, u = s.update || {};
+  const bezig = u.status === "bezig";
+  return `<div class="kaart stapel" style="background:var(--paneel-2);box-shadow:none" id="bijwerken">
+    <div class="rij tussen"><div><h3>Clip-OS bijwerken</h3>
+      <div class="zacht klein">${v.kan_bijwerken ? `Huidige versie: ${esc(v.commit)} · ${esc(v.datum)}` : esc(v.reden)}</div></div>
+      ${v.kan_bijwerken ? `<button class="knop primair" data-actie="bijwerken" ${bezig ? "disabled" : ""}>${icoon("refresh")}${bezig ? "Bezig met bijwerken…" : "Zoek en installeer updates"}</button>` : ""}</div>
+    ${u.status === "herstarten" ? `<div class="waarschuwing">✅ Bijgewerkt! Sluit het zwarte venster van Clip-OS en open Clip-OS opnieuw via je snelkoppeling.</div>` : ""}
+    ${(u.log || []).length ? `<pre class="log" style="margin:0">${esc(u.log.join("\n"))}</pre>` : ""}
+  </div>`;
+}
+
 function paginaInstellingen() {
   if (!S.config || !S.kw) return `<div class="laden">Laden…</div>`;
   const c = S.config, kw = S.kw, thema = opslag("thema") || "auto";
@@ -547,6 +561,7 @@ function paginaInstellingen() {
         <label class="veld">Spraakmodel (sneller ↔ nauwkeuriger)<select class="invoer" id="s-model">${(c.whisper_modellen || []).map(m => `<option ${m === c.whisper_model ? "selected" : ""}>${esc(m)}</option>`).join("")}</select></label>
       </div>
       <div class="rij"><button class="knop primair" data-actie="config-opslaan">${icoon("check")}Opslaan</button><span class="tip">Tip: "medium" is nauwkeuriger voor Nederlands, maar trager.</span></div>
+      ${bijwerkKaart()}
       <h3 style="margin-top:10px">Thema</h3>
       <div class="segment">${[["auto", "Automatisch"], ["donker", "Donker"], ["licht", "Licht"]].map(([k, n]) => `<button class="${thema === k ? "aan" : ""}" data-actie="thema" data-thema="${k}">${n}</button>`).join("")}</div>
     </div>
@@ -588,6 +603,7 @@ function magNietVerversen() {
 async function laadBriefs() { S.briefs = await api.get("/api/briefs"); }
 async function laadConfig() { S.config = await api.get("/api/config"); }
 async function laadKw() { S.kw = await api.get("/api/kostenwacht"); }
+async function laadSysteem() { S.systeem = await api.get("/api/systeem"); }
 async function laadTrends() { S.trends = (await api.get("/api/trends")).rapport; }
 async function laadLes() { S.les = (await api.get("/api/lessenboek")).tekst; }
 
@@ -619,7 +635,7 @@ async function naarPagina() {
   S.bewerk = null; S.vuil = false;
   const p = huidig();
   try {
-    if (p === "instellingen") await Promise.all([laadConfig(), laadKw()]);
+    if (p === "instellingen") await Promise.all([laadConfig(), laadKw(), laadSysteem()]);
     if (p === "lessen") await laadLes();
     if (p === "trends") await laadTrends();
     if (p === "campagnes" || p === "vandaag" || p === "claude") await laadBriefs();
@@ -728,6 +744,17 @@ const ACTIES = {
     S.bewerk = null; S.vuil = false;
     await laadBriefs();
     toast("Campagne opgeslagen");
+  },
+  async bijwerken() {
+    await api.post("/api/systeem/bijwerken");
+    toast("Clip-OS wordt bijgewerkt…");
+    const volg = async () => {
+      await laadSysteem();
+      if (huidig() === "instellingen") renderPagina(true);
+      if (S.systeem.update.status === "bezig") setTimeout(volg, 1500);
+      else toast(S.systeem.update.status === "fout" ? "Bijwerken mislukt, zie het logboek" : S.systeem.update.status === "actueel" ? "Je hebt al de nieuwste versie" : "Bijgewerkt! Herstart Clip-OS.", S.systeem.update.status === "fout" ? "fout" : "ok");
+    };
+    setTimeout(volg, 1000);
   },
   async "config-opslaan"() {
     const talen = JSON.parse(JSON.stringify(S.config.talen || {}));

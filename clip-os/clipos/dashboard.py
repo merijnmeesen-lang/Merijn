@@ -19,7 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import claude_taken, inbox, kostenwacht, productie, werk
+from . import bijwerken, claude_taken, inbox, kostenwacht, productie, werk
 
 WEB = Path(__file__).parent / "web"
 SLEUTEL = secrets.token_urlsafe(24)
@@ -188,6 +188,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(briefs_lijst())
         if pad == "/api/config":
             return self._json({**productie.config(), "whisper_modellen": WHISPER_MODELLEN})
+        if pad == "/api/systeem":
+            return self._json({"versie": bijwerken.versie(), "update": bijwerken.STAAT})
         if pad == "/api/kostenwacht":
             return self._json(kostenwacht_status())
         if pad == "/api/trends":
@@ -263,6 +265,8 @@ class Handler(BaseHTTPRequestHandler):
             brief = valideer_brief(body)
             werk.schrijf_json(werk.BRIEFS / f"{m.group(1)}.json", brief)
             return self._json({"ok": True, "brief": brief})
+        if pad == "/api/systeem/bijwerken":
+            return self._json({"ok": True, "update": bijwerken.start()})
         if pad == "/api/config":
             cfg = valideer_config(body)
             werk.schrijf_json(werk.ROOT / "config.json", cfg)

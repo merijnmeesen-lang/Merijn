@@ -101,7 +101,7 @@ Heb je Clip-OS als zip gedownload? Stap dan één keer over naar een versie die 
 4. Maak een nieuwe snelkoppeling naar **`start.bat`** in deze map, en verwijder de oude snelkoppeling.
 
 ### Daarna: updaten
-Dubbelklik **`update.bat`**. Daarna sluit je het zwarte venster van Clip-OS en start je `start.bat` opnieuw. Je instellingen (`config.json`), lessenboek, campagnes en video's worden nooit overschreven.
+In Clip-OS: **Instellingen → Clip-OS bijwerken → Zoek en installeer updates**. Of dubbelklik **`update.bat`**. Daarna sluit je het zwarte venster van Clip-OS en start je `start.bat` opnieuw. Je instellingen (`config.json`), lessenboek, campagnes en video's worden nooit overschreven.
 
 ## 🤖 De agents
 
