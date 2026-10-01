@@ -15,7 +15,7 @@ function opslag(k, v) {
 
 const S = {
   staat: null, briefs: [], config: null, kw: null, les: "",
-  taal: opslag("taal") || "alle", trends: null, trendTaal: opslag("trendtaal") || "beide", bewerk: null, open: new Set(), concept: {}, vuil: false,
+  taal: opslag("taal") || "alle", afwijs: null, trends: null, trendTaal: opslag("trendtaal") || "beide", bewerk: null, open: new Set(), concept: {}, vuil: false,
   laatsteHtml: "", offline: false, vorigeTaken: {},
 };
 
@@ -229,6 +229,21 @@ function paginaVandaag() {
   </div>`;
 }
 
+const AFWIJS_REDENEN = ["Saai onderwerp", "Hook te vaag", "Te lang", "Past niet bij mijn kanaal", "Al eerder gedaan", "Slecht moment in de video"];
+
+function afwijsPaneel(v) {
+  const id = esc(v.id);
+  return `<div class="afwijs-paneel">
+    <div class="klein"><b>Waarom niet?</b> <span class="zacht">Claude leert hiervan voor volgende ideeën.</span></div>
+    <div class="redenen">${AFWIJS_REDENEN.map(r => `<button class="knop zacht klein" data-actie="afwijs-kies" data-id="${id}" data-reden="${esc(r)}">${esc(r)}</button>`).join("")}</div>
+    <input class="invoer" id="aw-${id}" data-concept="aw-${id}" maxlength="300" placeholder="Of typ zelf een reden (mag ook leeg)" value="${esc(cv("aw-" + v.id))}">
+    <div class="acties">
+      <button class="knop gevaar breed" data-actie="afwijzen-bevestig" data-id="${id}">${icoon("x")}Afwijzen</button>
+      <button class="knop zacht" data-actie="afwijzen-annuleer">Terug</button>
+    </div>
+  </div>`;
+}
+
 function paginaIdeeen() {
   const lijst = zichtbaar().filter(v => v.status === "idee").sort((a, b) => (b.score || 0) - (a.score || 0));
   const afgewezen = zichtbaar().filter(v => v.status === "afgewezen");
@@ -246,17 +261,17 @@ function paginaIdeeen() {
         <input class="invoer" data-veld="titel" data-concept="titel-${esc(v.id)}" value="${esc(cv("titel-" + v.id, v.titel))}"></label>
       ${v.citaat ? `<blockquote class="citaat">“${esc(v.citaat)}”</blockquote>` : ""}
       ${v.reden ? `<div class="waarom">💡 <span>${esc(v.reden)}</span></div>` : ""}
-      <div class="acties">
+      ${S.afwijs === v.id ? afwijsPaneel(v) : `<div class="acties">
         <button class="knop primair breed" data-actie="akkoord" data-id="${esc(v.id)}">${icoon("check")}Akkoord, maak video</button>
         <button class="knop gevaar" data-actie="afwijzen" data-id="${esc(v.id)}" title="Afwijzen" aria-label="Afwijzen">${icoon("x")}</button>
-      </div>
+      </div>`}
     </article>`;
   }).join("");
   return `
     ${lijst.length ? `<div class="raster">${kaarten}</div>`
       : leeg("💡", "Geen nieuwe ideeën", "Laat Claude een video uitwerken of start de dagelijkse run.", `<a class="knop primair" href="#/vandaag">${icoon("sparkle")}Nieuwe video</a>`)}
     ${afgewezen.length ? `<div class="sectie"><h2>Afgewezen</h2><span>${afgewezen.length} · Claude leert hiervan</span></div>
-      <div class="kaart"><div class="feed">${afgewezen.slice(-15).reverse().map(v => `<div><span>${taalBadge(v.taal)} ${esc(v.hook)}</span>
+      <div class="kaart"><div class="feed">${afgewezen.slice(-15).reverse().map(v => `<div><span>${taalBadge(v.taal)} ${esc(v.hook)}${v.afwijsreden ? ` <span class="zacht klein">· ${esc(v.afwijsreden)}</span>` : ""}</span>
         <button class="knop zacht klein" data-actie="terug" data-id="${esc(v.id)}" style="margin-left:auto">Terugzetten</button></div>`).join("")}</div></div>` : ""}`;
 }
 
@@ -730,7 +745,16 @@ const ACTIES = {
     vergeet("hook-" + id, "titel-" + id);
     toast("👍 Akkoord! De video wordt nu gemaakt. Kijk bij Studio.");
   },
-  async afwijzen(el) { await api.post(`/api/afwijzen/${encodeURIComponent(el.dataset.id)}`); toast("Afgewezen. Claude leert hiervan."); },
+  afwijzen(el) { S.afwijs = el.dataset.id; renderPagina(true); document.getElementById("aw-" + el.dataset.id)?.focus(); },
+  "afwijs-kies"(el) { S.concept["aw-" + el.dataset.id] = el.dataset.reden; renderPagina(true); },
+  "afwijzen-annuleer"() { S.afwijs = null; renderPagina(true); },
+  async "afwijzen-bevestig"(el) {
+    const id = el.dataset.id;
+    const reden = (document.getElementById("aw-" + id)?.value || "").trim();
+    await api.post(`/api/afwijzen/${encodeURIComponent(id)}`, { reden });
+    S.afwijs = null; vergeet("aw-" + id);
+    toast(reden ? "Afgewezen. Claude leert hiervan." : "Afgewezen. Tip: met een reden leert Claude sneller.");
+  },
   async terug(el) { await api.post(`/api/terug/${encodeURIComponent(el.dataset.id)}`); toast("Teruggezet bij Ideeën"); },
   async opnieuw(el) { await api.post(`/api/opnieuw/${encodeURIComponent(el.dataset.id)}`); toast("Wordt opnieuw gemaakt"); },
   async geplaatst(el) {
