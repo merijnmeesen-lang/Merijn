@@ -31,10 +31,13 @@ Schrijf `jobs/<job>/clips.json` (maximaal 8 kandidaten, beste eerst):
    "titel": "Voorlopige titel",
    "reden": "Eén zin: waarom dit werkt (hook + afloop)",
    "score": 8,
-   "citaat": "De eerste ~15 woorden letterlijk uit het transcript"}
+   "citaat": "De eerste ~15 woorden letterlijk uit het transcript",
+   "nadruk": [141.2]}
 ]}
 ```
 - `start` = begin van de eerste zin; `end` = eind van de laatste zin (de tijden uit het transcript).
+- `nadruk`: 1 tot 2 tijdstippen (seconden, uit het transcript) van de **sterkste zin** of de clou in de clip. Daar zoomt de
+  video extra in. Kies het begin van die zin. Mag leeg zijn (`[]`) als er geen duidelijke uitschieter is.
 - `score` 1–10: eerlijk. Een 9 of 10 alleen voor echte uitschieters.
 - **Taal:** hook en titel schrijf je in de taal van het transcript (zie `taal=` op de eerste regel van transcript.txt), tenzij de brief expliciet een andere `taal` noemt. Een Engelse podcast krijgt dus Engelse teksten (ook al is deze instructie Nederlands).
 - De hook-tekst is **niet** hetzelfde als de eerste zin. Hij maakt nieuwsgierig ("Hij verloor €2 miljoen in één nacht").

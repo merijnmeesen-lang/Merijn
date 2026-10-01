@@ -242,6 +242,8 @@ def _voorbereiden(tid: str, taak: dict, f) -> dict:
         rc, uit = _stap(tid, f, ["dag"])
         if rc != 0:
             raise Stop("Nieuwe video's zoeken mislukt: " + (uit.splitlines()[-1] if uit else f"code {rc}"))
+        f.write("📈 Views van je geplaatste video's ophalen…\n"); f.flush()
+        _stap(tid, f, ["views"])
     return data
 
 

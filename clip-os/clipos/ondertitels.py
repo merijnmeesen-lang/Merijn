@@ -73,7 +73,7 @@ def plak_aanhangsels(woorden: list[dict]) -> list[dict]:
 
 
 def maak_ass(woorden: list[dict], clip_start: float, duur: float, hook: str = "", hook_duur: float = 3.0,
-             hook_y: int = 300) -> str:
+             hook_y: int = 300, onder_pos: tuple[int, int] | None = None) -> str:
     """woorden: absolute tijden uit het transcript; ze worden omgerekend naar clip-tijd."""
     rel = [
         {"start": max(0.0, w["start"] - clip_start), "end": min(duur, w["end"] - clip_start), "woord": schoon(w["woord"]).upper()}
@@ -84,6 +84,7 @@ def maak_ass(woorden: list[dict], clip_start: float, duur: float, hook: str = ""
         regels.append(f"Dialogue: 1,{ass_tijd(0)},{ass_tijd(min(hook_duur, duur))},Hook,,0,0,0,,"
                       f"{{\\an8\\pos(540,{int(hook_y)})}}{schoon(hook)}\n")
 
+    plek = f"{{\\an5\\pos({onder_pos[0]},{onder_pos[1]})}}" if onder_pos else ""
     groepen = groepeer(rel)
     for gi, groep in enumerate(groepen):
         volgende_start = groepen[gi + 1][0]["start"] if gi + 1 < len(groepen) else duur
@@ -99,5 +100,5 @@ def maak_ass(woorden: list[dict], clip_start: float, duur: float, hook: str = ""
                 (f"{{\\c{GEEL}}}{x['woord']}{{\\c{WIT}}}" if j == i else x["woord"])
                 for j, x in enumerate(groep)
             ]
-            regels.append(f"Dialogue: 0,{ass_tijd(start)},{ass_tijd(eind)},Onder,,0,0,0,,{' '.join(delen)}\n")
+            regels.append(f"Dialogue: 0,{ass_tijd(start)},{ass_tijd(eind)},Onder,,0,0,0,,{plek}{' '.join(delen)}\n")
     return "".join(regels)

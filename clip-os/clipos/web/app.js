@@ -322,6 +322,14 @@ function paginaStudio() {
       <div class="acties"><button class="knop zacht" data-actie="opnieuw" data-id="${esc(v.id)}">${icoon("refresh")}Opnieuw proberen</button></div></article>`).join("")}</div>` : ""}`;
 }
 
+function montageLabels(m) {
+  if (!m) return "";
+  const indeling = { volg: "🎯 Gezicht volgen", split: "👥 Split-screen", vol: "🖼️ Wazige balken" }[m.modus] || "";
+  return [indeling && `<span class="badge">${indeling}</span>`,
+    m.ingekort > 0.2 && `<span class="badge">✂️ ${String(m.ingekort).replace(".", ",")} s stiltes eruit</span>`,
+    m.zooms && `<span class="badge">🔍 ${m.zooms} zoom${m.zooms > 1 ? "s" : ""}</span>`].filter(Boolean).join("");
+}
+
 function paginaPlaatsen() {
   const lijst = zichtbaar().filter(v => v.status === "klaar");
   if (!lijst.length) return leeg("📤", "Niets om te plaatsen", "Zodra een video klaar is, staat hij hier met titel, beschrijving en checklist.");
@@ -334,6 +342,7 @@ function paginaPlaatsen() {
       <div class="stapel">
         <div class="rij">${taalBadge(v.taal)}<span class="badge">${esc(v.duur)} sec</span>
           ${v.controle_ok ? `<span class="badge ok">${icoon("check")}Controles OK</span>` : `<span class="badge fout">${fouten.length} controle(s) mislukt</span>`}
+          ${montageLabels(v.montage)}
           <span class="flauw klein" style="margin-left:auto">${esc(v.bron_titel)}</span></div>
         <div class="doel">${icoon("pin")}Plaats op: ${esc(accounts[v.taal] || "je YouTube-kanaal")}</div>
         ${fouten.length ? `<div class="controles">${fouten.map(c => `<div class="nee">✗ ${esc(c[1])}</div>`).join("")}</div>` : ""}
@@ -373,18 +382,28 @@ function grafiek(lijst) {
 
 function paginaResultaten() {
   const lijst = zichtbaar().filter(v => v.status === "geplaatst");
-  if (!lijst.length) return leeg("📈", "Nog niets geplaatst", "Klik bij Plaatsen op ‘Geplaatst’ en vul na 1 tot 3 dagen de views in. Claude leert daarvan.");
+  if (!lijst.length) return leeg("📈", "Nog niets geplaatst", "Klik bij Plaatsen op ‘Geplaatst’ en plak de link van je Short. Clip-OS haalt de views daarna zelf op.");
   const totaal = lijst.reduce((a, v) => a + (v.views || 0), 0), metViews = lijst.filter(v => v.views);
   const perTaal = talen().map(t => {
     const l = (S.staat.voorstellen || []).filter(v => v.status === "geplaatst" && (v.taal || "?") === t);
     const views = l.reduce((a, v) => a + (v.views || 0), 0);
     return `<div class="tegel"><div class="label">${esc(taalNaam(t))}</div><div class="getal">${getal(views)}</div><div class="verdeling">${l.length} video's · gem. ${getal(l.filter(v => v.views).length ? Math.round(views / l.filter(v => v.views).length) : 0)}</div></div>`;
   }).join("");
-  const rijen = [...lijst].sort((a, b) => ((b.geplaatst_op || "") > (a.geplaatst_op || "") ? 1 : -1)).map(v => `<tr data-kaart="${esc(v.id)}">
-      <td>${v.link ? `<a href="${esc(v.link)}" target="_blank" rel="noopener">${esc(v.titel)}</a>` : esc(v.titel)}<div class="flauw klein">${esc(v.hook)}</div></td>
+  const groei = v => { const h = v.views_historie || []; return h.length > 1 ? h[h.length - 1][1] - h[h.length - 2][1] : null; };
+  const vs = S.viewsStaat || {};
+  const zonderLink = lijst.filter(v => !v.link).length;
+  const rijen = [...lijst].sort((a, b) => ((b.geplaatst_op || "") > (a.geplaatst_op || "") ? 1 : -1)).map(v => {
+    const id = esc(v.id), g = groei(v);
+    return `<tr data-kaart="${id}">
+      <td>${v.link ? `<a href="${esc(v.link)}" target="_blank" rel="noopener">${esc(v.titel)}</a>` : esc(v.titel)}<div class="flauw klein">${esc(v.hook)}</div>
+        ${v.link ? "" : `<div class="rij" style="gap:6px;margin-top:6px"><input class="invoer" style="flex:1;min-width:180px;padding:6px 9px" id="lk-${id}" data-concept="lk-${id}" placeholder="Plak de link van je Short of TikTok" value="${esc(cv("lk-" + v.id))}">
+          <button class="knop zacht klein" data-actie="link" data-id="${id}">Opslaan</button></div>`}</td>
       <td>${taalBadge(v.taal)}</td><td class="flauw">${esc(relTijd(v.geplaatst_op))}</td>
-      <td><div class="views-invoer"><input class="invoer" inputmode="numeric" id="v-${esc(v.id)}" data-concept="views-${esc(v.id)}" value="${esc(cv("views-" + v.id, v.views ?? ""))}" placeholder="views">
-        <button class="knop zacht klein" data-actie="views" data-id="${esc(v.id)}">Opslaan</button></div></td></tr>`).join("");
+      <td class="num">${v.views_auto
+        ? `<b>${getal(v.views)}</b>${g !== null ? `<div class="klein" style="color:var(--ok)">${g >= 0 ? "+" : ""}${getal(g)} sinds vorige meting</div>` : ""}${v.likes ? `<div class="flauw klein">👍 ${getal(v.likes)}</div>` : ""}`
+        : `<div class="views-invoer"><input class="invoer" inputmode="numeric" id="v-${id}" data-concept="views-${id}" value="${esc(cv("views-" + v.id, v.views ?? ""))}" placeholder="views">
+          <button class="knop zacht klein" data-actie="views" data-id="${id}">Opslaan</button></div>`}</td></tr>`;
+  }).join("");
   return `
     <div class="raster-4">
       <div class="tegel accent"><div class="label">${icoon("chart")}Totaal views</div><div class="getal">${getal(totaal)}</div><div class="verdeling">${lijst.length} geplaatst · ${metViews.length} met views</div></div>
@@ -392,7 +411,12 @@ function paginaResultaten() {
     </div>
     <div class="sectie"><h2>Top 10</h2><span>op views</span></div>
     <div class="kaart">${grafiek(lijst)}</div>
-    <div class="sectie"><h2>Alle geplaatste video's</h2><span>vul views in na 1-3 dagen</span></div>
+    <div class="kaart rij tussen" style="margin-top:16px"><div><h3>Views automatisch ophalen</h3>
+      <div class="zacht klein">${vs.status === "bezig" ? "Bezig met ophalen…" : vs.klaar ? `Laatst: ${esc(relTijd(vs.klaar))} · ${vs.bijgewerkt} bijgewerkt${(vs.fouten || []).length ? ` · ${vs.fouten.length} mislukt` : ""}` : "Gebeurt ook elke dag automatisch in de dagelijkse run."}
+      ${zonderLink ? ` · <span style="color:var(--warn)">${zonderLink} video('s) zonder link</span>` : ""}</div></div>
+      <button class="knop primair" data-actie="views-ophalen" ${vs.status === "bezig" ? "disabled" : ""}>${icoon("refresh")}${vs.status === "bezig" ? "Bezig…" : "Views ophalen"}</button></div>
+    ${(vs.fouten || []).length ? `<div class="foutblok" style="margin-top:10px">${vs.fouten.map(esc).join("\n")}</div>` : ""}
+    <div class="sectie"><h2>Alle geplaatste video's</h2><span>views komen automatisch binnen via de link</span></div>
     <div class="kaart tabel-wrap"><table class="tabel"><thead><tr><th>Video</th><th>Taal</th><th>Geplaatst</th><th class="num">Views</th></tr></thead><tbody>${rijen}</tbody></table></div>`;
 }
 
@@ -531,6 +555,20 @@ function markdown(tekst) {
 }
 const paginaLessen = () => `<div class="kaart proza">${S.les ? markdown(S.les) : "<p class='zacht'>Laden…</p>"}</div>`;
 
+function montageKaart() {
+  const m = (S.config && S.config.montage) || {};
+  const vink = (k, titel, uitleg) => `<label class="rij" style="gap:10px;align-items:flex-start"><span class="schakelaar" style="margin-top:2px"><input type="checkbox" id="m-${k}" ${m[k] ? "checked" : ""}><span></span></span>
+    <span><b>${titel}</b><div class="zacht klein">${uitleg}</div></span></label>`;
+  return `<div class="kaart stapel" style="background:var(--paneel-2);box-shadow:none" data-formulier>
+    <h3>Montage</h3>
+    ${vink("stiltes_eruit", "Stiltes en uhm's eruit knippen", "Pauzes worden ingekort en stopwoorden weggehaald. Strakker tempo, mensen kijken langer.")}
+    <label class="veld" style="max-width:260px">Pauzes langer dan (seconden) worden geknipt<input class="invoer" type="number" step="0.05" min="0.2" max="1.5" id="m-max_stilte" value="${esc(m.max_stilte ?? 0.4)}"></label>
+    ${vink("zoom", "Inzoomen", "Lichte zoom na knippen en een sterkere zoom op de sterkste zin (aangewezen door de Hook-jager).")}
+    ${vink("split_screen", "Split-screen bij twee sprekers", "Zitten twee mensen naast elkaar in beeld, dan komen ze boven elkaar te staan met de ondertitels in het midden.")}
+    <div class="tip">Opslaan met de knop hierboven. Geldt voor nieuwe video's; bestaande video's pas je aan met ‘Opnieuw maken’.</div>
+  </div>`;
+}
+
 function bijwerkKaart() {
   const s = S.systeem;
   if (!s) return "";
@@ -565,6 +603,7 @@ function paginaInstellingen() {
         <label class="veld">Spraakmodel (sneller ↔ nauwkeuriger)<select class="invoer" id="s-model">${(c.whisper_modellen || []).map(m => `<option ${m === c.whisper_model ? "selected" : ""}>${esc(m)}</option>`).join("")}</select></label>
       </div>
       <div class="rij"><button class="knop primair" data-actie="config-opslaan">${icoon("check")}Opslaan</button><span class="tip">Tip: "medium" is nauwkeuriger voor Nederlands, maar trager.</span></div>
+      ${montageKaart()}
       ${bijwerkKaart()}
       <h3 style="margin-top:10px">Thema</h3>
       <div class="segment">${[["auto", "Automatisch"], ["donker", "Donker"], ["licht", "Licht"]].map(([k, n]) => `<button class="${thema === k ? "aan" : ""}" data-actie="thema" data-thema="${k}">${n}</button>`).join("")}</div>
@@ -609,6 +648,7 @@ async function laadConfig() { S.config = await api.get("/api/config"); }
 async function laadKw() { S.kw = await api.get("/api/kostenwacht"); }
 async function laadSysteem() { S.systeem = await api.get("/api/systeem"); }
 async function laadOpen() { S.openJobs = await api.get("/api/jobs/open"); }
+async function laadViewsStaat() { S.viewsStaat = await api.get("/api/views/staat"); }
 async function laadTrends() { S.trends = (await api.get("/api/trends")).rapport; }
 async function laadLes() { S.les = (await api.get("/api/lessenboek")).tekst; }
 
@@ -644,6 +684,7 @@ async function naarPagina() {
     if (p === "instellingen") await Promise.all([laadConfig(), laadKw(), laadSysteem()]);
     if (p === "lessen") await laadLes();
     if (p === "trends") await laadTrends();
+    if (p === "resultaten") await laadViewsStaat();
     if (p === "campagnes" || p === "vandaag" || p === "claude") await laadBriefs();
     if (p === "claude") await Promise.all([laadKw(), laadOpen()]);
   } catch (e) { toast(e.message, "fout"); }
@@ -766,11 +807,32 @@ const ACTIES = {
     };
     setTimeout(volg, 1000);
   },
+  async "views-ophalen"() {
+    await api.post("/api/views/ophalen");
+    toast("Views worden opgehaald…");
+    const volg = async () => {
+      await laadViewsStaat();
+      if (huidig() === "resultaten") renderPagina(true);
+      if (S.viewsStaat.status === "bezig") setTimeout(volg, 1500);
+      else { await ververs(); toast(S.viewsStaat.status === "fout" ? "Views ophalen mislukt" : `Views bijgewerkt voor ${S.viewsStaat.bijgewerkt} video('s)`, S.viewsStaat.status === "fout" ? "fout" : "ok"); }
+    };
+    setTimeout(volg, 1200);
+  },
+  async link(el) {
+    const id = el.dataset.id;
+    await api.post(`/api/link/${encodeURIComponent(id)}`, { link: document.getElementById("lk-" + id)?.value || "" });
+    vergeet("lk-" + id);
+    toast("Link opgeslagen. Klik op ‘Views ophalen’.");
+  },
   async "config-opslaan"() {
     const talen = JSON.parse(JSON.stringify(S.config.talen || {}));
     document.querySelectorAll("[data-taal-veld]").forEach(el => { talen[el.dataset.code][el.dataset.taalVeld] = el.value; });
+    const montage = {
+      stiltes_eruit: $("#m-stiltes_eruit")?.checked ?? true, zoom: $("#m-zoom")?.checked ?? true,
+      split_screen: $("#m-split_screen")?.checked ?? true, max_stilte: $("#m-max_stilte")?.value ?? 0.4,
+    };
     S.config = (await api.post("/api/config", {
-      talen, max_ideeen_per_bron: $("#s-ideeen").value, whisper_model: $("#s-model").value,
+      talen, max_ideeen_per_bron: $("#s-ideeen").value, whisper_model: $("#s-model").value, montage,
     })).config;
     await laadConfig();
     S.vuil = false;

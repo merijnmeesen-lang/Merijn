@@ -27,6 +27,19 @@ def standaardbestanden() -> None:
             shutil.copy2(ROOT / voorbeeld, ROOT / eigen)
 
 
+MONTAGE_STANDAARD = {"stiltes_eruit": True, "max_stilte": 0.4, "zoom": True, "split_screen": True}
+
+
+def montage_instellingen() -> dict:
+    """Montage-opties uit config.json (Instellingen → Montage), met veilige standaardwaarden."""
+    standaardbestanden()
+    try:
+        eigen = lees_json(ROOT / "config.json").get("montage") or {}
+    except (OSError, ValueError):
+        eigen = {}
+    return {**MONTAGE_STANDAARD, **{k: eigen[k] for k in MONTAGE_STANDAARD if k in eigen}}
+
+
 def systeemcertificaten() -> None:
     """Gebruik de certificaten van Windows/macOS in plaats van Pythons eigen lijst.
 

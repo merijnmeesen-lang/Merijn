@@ -88,6 +88,10 @@ def valideer_clips(job_dir) -> tuple[list[dict], list[str]]:
             continue
         if float(c["start"]) < 0 or float(c["end"]) > duur_bron + 1:
             fouten.append(f"{cid}: valt buiten de video (0-{duur_bron:.0f}s)")
+        for t in c.get("nadruk") or []:
+            if not isinstance(t, (int, float)) or not float(c["start"]) <= t <= float(c["end"]):
+                fouten.append(f"{cid}: 'nadruk' moet tijden (seconden) binnen de clip bevatten")
+                break
         if not (brief["min_seconden"] - 1 <= lengte <= brief["max_seconden"] - 1):
             fouten.append(f"{cid}: lengte {lengte:.1f}s, moet {brief['min_seconden']}-{brief['max_seconden'] - 1}s zijn")
     return clips, fouten
@@ -112,6 +116,7 @@ def registreer_ideeen(job: str) -> list[str]:
             "hook": c["hook"], "titel": c["titel"],
             "beschrijving": c.get("beschrijving", ""), "hashtags": c.get("hashtags", []),
             "reden": c.get("reden", ""), "score": c.get("score"), "citaat": c.get("citaat", ""),
+            "nadruk": [float(t) for t in (c.get("nadruk") or []) if isinstance(t, (int, float))][:3],
             "bron_titel": bron_info.get("titel") or Path(meta.get("bron", "")).name, "bron_kanaal": bron_info.get("kanaal", ""),
         }):
             nieuw.append(vid)
@@ -126,12 +131,14 @@ def maak(vid: str) -> dict:
     try:
         job_dir = werk.job_map(v["job"])
         brief = job_brief(job_dir)
-        video = render.render_clip(job_dir, {"id": v["clip_id"], "start": v["start"], "end": v["end"], "hook": v["hook"]},
-                                   modus=v.get("modus", "auto"))
+        video = render.render_clip(job_dir, {"id": v["clip_id"], "start": v["start"], "end": v["end"], "hook": v["hook"],
+                                             "nadruk": v.get("nadruk") or []}, modus=v.get("modus", "auto"))
+        r = werk.lees_json(video.parent / "render.json")
+        montage = {k: r.get(k) for k in ("modus", "ingekort", "knippen", "zooms", "duur")}
         uitslag = controle.controleer(video, v, brief)
         doel = pakket.maak_pakket(job_dir, v, brief, uitslag, taal_info(v.get("taal")))
         return inbox.zet(
-            vid, status="klaar", map=str(doel.relative_to(werk.ROOT)),
+            vid, status="klaar", map=str(doel.relative_to(werk.ROOT)), montage=montage, duur=round(r.get("duur") or v.get("duur") or 0, 1),
             controle=[[ok, t] for ok, t in uitslag], controle_ok=controle.geslaagd(uitslag),
         )
     except Exception as e:  # de fout moet zichtbaar worden in het dashboard

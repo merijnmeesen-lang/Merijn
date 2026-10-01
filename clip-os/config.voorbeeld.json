@@ -13,5 +13,11 @@
       "account": "je Nederlandse YouTube-kanaal",
       "max_nieuwe_bronnen_per_dag": 1
     }
+  },
+  "montage": {
+    "stiltes_eruit": true,
+    "max_stilte": 0.4,
+    "zoom": true,
+    "split_screen": true
   }
 }

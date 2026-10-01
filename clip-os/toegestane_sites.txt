@@ -16,6 +16,9 @@ drive.usercontent.google.com
 dropbox.com
 dropboxusercontent.com
 
+# Views van je geplaatste TikToks ophalen
+tiktok.com
+
 # Eenmalige gratis download van het spraakmodel (faster-whisper)
 huggingface.co
 hf.co

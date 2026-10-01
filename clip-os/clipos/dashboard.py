@@ -19,7 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import bijwerken, claude_taken, inbox, kostenwacht, productie, werk
+from . import bijwerken, claude_taken, inbox, kostenwacht, productie, views, werk
 
 WEB = Path(__file__).parent / "web"
 SLEUTEL = secrets.token_urlsafe(24)
@@ -124,6 +124,13 @@ def valideer_config(nieuw: dict) -> dict:
             "max_nieuwe_bronnen_per_dag": maximum,
         }
     cfg["talen"] = talen
+    m = {**werk.MONTAGE_STANDAARD, **(cfg.get("montage") or {}), **(nieuw.get("montage") or {})}
+    try:
+        max_stilte = round(max(0.2, min(1.5, float(m["max_stilte"]))), 2)
+    except (TypeError, ValueError):
+        raise ValueError("Max. stilte moet een getal zijn (bijv. 0.4)")
+    cfg["montage"] = {"stiltes_eruit": bool(m["stiltes_eruit"]), "max_stilte": max_stilte,
+                      "zoom": bool(m["zoom"]), "split_screen": bool(m["split_screen"])}
     return cfg
 
 
@@ -187,9 +194,11 @@ class Handler(BaseHTTPRequestHandler):
         if pad == "/api/briefs":
             return self._json(briefs_lijst())
         if pad == "/api/config":
-            return self._json({**productie.config(), "whisper_modellen": WHISPER_MODELLEN})
+            return self._json({**productie.config(), "montage": werk.montage_instellingen(), "whisper_modellen": WHISPER_MODELLEN})
         if pad == "/api/jobs/open":
             return self._json(productie.open_jobs())
+        if pad == "/api/views/staat":
+            return self._json(views.STAAT)
         if pad == "/api/systeem":
             return self._json({"versie": bijwerken.versie(), "update": bijwerken.STAAT})
         if pad == "/api/kostenwacht":
@@ -267,13 +276,15 @@ class Handler(BaseHTTPRequestHandler):
             brief = valideer_brief(body)
             werk.schrijf_json(werk.BRIEFS / f"{m.group(1)}.json", brief)
             return self._json({"ok": True, "brief": brief})
+        if pad == "/api/views/ophalen":
+            return self._json({"ok": True, "staat": views.start()})
         if pad == "/api/systeem/bijwerken":
             return self._json({"ok": True, "update": bijwerken.start()})
         if pad == "/api/config":
             cfg = valideer_config(body)
             werk.schrijf_json(werk.ROOT / "config.json", cfg)
             return self._json({"ok": True, "config": cfg})
-        if m := re.fullmatch(r"/api/(akkoord|afwijzen|geplaatst|views|opnieuw|terug)/([^/]+)", pad):
+        if m := re.fullmatch(r"/api/(akkoord|afwijzen|geplaatst|views|opnieuw|terug|link)/([^/]+)", pad):
             return self._voorstel(m.group(1), m.group(2), body)
         return self._json({"fout": "onbekende actie"}, 404)
 
@@ -290,8 +301,16 @@ class Handler(BaseHTTPRequestHandler):
             inbox.zet(vid, status="afgewezen", afwijsreden=str(body.get("reden", ""))[:300])
         elif actie == "terug" and v["status"] == "afgewezen":
             inbox.zet(vid, status="idee")
+        elif actie == "link" and v["status"] == "geplaatst":
+            link = str(body.get("link", "")).strip()
+            if link and not views.geldige_link(link):
+                raise ValueError("Plak de link van je YouTube Short of TikTok (https://…)")
+            inbox.zet(vid, link=link)
         elif actie == "geplaatst" and v["status"] == "klaar":
-            inbox.zet(vid, status="geplaatst", link=str(body.get("link", ""))[:500], geplaatst_op=inbox.nu())
+            link = str(body.get("link", "")).strip()[:500]
+            if link and not views.geldige_link(link):
+                raise ValueError("Dat lijkt geen link van een YouTube Short of TikTok. Laat het leeg of plak de juiste link.")
+            inbox.zet(vid, status="geplaatst", link=link, geplaatst_op=inbox.nu())
         elif actie == "views" and v["status"] == "geplaatst":
             try:
                 views = int(str(body.get("views", "")).replace(".", "").replace(",", "").strip())

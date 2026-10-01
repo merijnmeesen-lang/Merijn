@@ -29,4 +29,5 @@ REM 3) Claude (Pro-login) met een maximum aantal stappen.
 echo === %date% %time% === >> data\dagelijks.log
 REM 3a) Nieuwe video's zoeken, downloaden en uitschrijven (gewone code, geen Claude)
 python -m clipos dag >> data\dagelijks.log 2>&1
+python -m clipos views >> data\dagelijks.log 2>&1
 claude -p "/dagelijks" --permission-mode acceptEdits --max-turns 80 >> data\dagelijks.log 2>&1

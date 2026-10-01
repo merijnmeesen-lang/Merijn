@@ -22,6 +22,9 @@ in gewoon Nederlands uit en geef stap-voor-stap instructies.
 - `config.json` en `lessenboek.md` zijn persoonlijk en staan niet in git (ze worden aangemaakt uit `config.voorbeeld.json`
   en `lessenboek.voorbeeld.md`). Nieuwe config-opties altijd met een standaardwaarde lezen (`.get`), want
   bestaande installaties hebben ze nog niet. `briefs/` (campagnes), `branding/`.
+- Montage: `clipos/tempo.py` (stiltes/uhm's eruit, zooms), `clipos/reframe.py` (gezicht volgen met YuNet-model in
+  `clipos/modellen/`, split-screen bij twee sprekers), `clipos/render.py`. Aan/uit via `montage` in config.json.
+- `clipos/views.py`: views/likes van geplaatste video's ophalen via de link (yt-dlp, alleen lezen).
 - `clipos/trends.py` + agent `clip-trendonderzoeker` + `/trends`: marktonderzoek (pagina Trends).
 - Updates: `update.bat` (git pull). Eenmalige overstap vanaf de zip-versie: `overzetten.bat`.
 - Werkdata (niet in git): `jobs/`, `output/`, `data/`.

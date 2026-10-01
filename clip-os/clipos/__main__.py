@@ -55,6 +55,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--periode", choices=["dag", "week", "maand"], default="week")
     s.add_argument("--min-minuten", type=int, default=10)
     sub.add_parser("trends-klaar", help="rapport van de trendonderzoeker controleren en melden")
+    sub.add_parser("views", help="views van geplaatste video's automatisch ophalen (via de link)")
     a = p.parse_args(argv)
 
     if a.cmd == "kostenwacht":
@@ -122,9 +123,12 @@ def main(argv: list[str] | None = None) -> int:
         print("Notitie opgeslagen.")
     elif a.cmd == "resultaten":
         rijen = [v for v in inbox.alle() if v.get("status") == "geplaatst"]
-        print("views\ttaal\tduur\tscore\tbrief\thook\ttitel")
+        from .views import groei
+        print("views\tgroei_laatste_dag\tlikes\ttaal\tduur\tmodus\tscore\tbrief\thook\ttitel")
         for v in sorted(rijen, key=lambda v: -(v.get("views") or 0)):
-            print(f"{v.get('views', '?')}\t{v.get('taal')}\t{v.get('duur')}\t{v.get('score')}\t{v.get('brief')}\t{v.get('hook')}\t{v.get('titel')}")
+            g = groei(v.get("views_historie") or [])
+            print(f"{v.get('views', '?')}\t{'' if g is None else g}\t{v.get('likes') or ''}\t{v.get('taal')}\t{v.get('duur')}\t"
+                  f"{(v.get('montage') or {}).get('modus', '')}\t{v.get('score')}\t{v.get('brief')}\t{v.get('hook')}\t{v.get('titel')}")
         afgewezen = [v for v in inbox.alle() if v.get("status") == "afgewezen"]
         if afgewezen:
             print("\nDoor jou afgewezen ideeën (hook | reden):")
@@ -147,6 +151,12 @@ def main(argv: list[str] | None = None) -> int:
         from . import trends
         r = trends.rond_af()
         print(f"Rapport OK: {len(r['videos'])} video's. Melding geplaatst.")
+    elif a.cmd == "views":
+        from . import views
+        uit = views.werk_bij()
+        print(f"Views bijgewerkt voor {uit['bijgewerkt']} video('s).")
+        for f in uit["fouten"]:
+            print(f"⚠️  {f}")
     elif a.cmd == "planning":
         from . import planning
         planning.uitleg()
