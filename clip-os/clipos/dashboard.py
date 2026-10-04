@@ -19,7 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import bijwerken, claude_taken, inbox, kostenwacht, productie, views, werk
+from . import bijwerken, claude_taken, inbox, kostenwacht, opslag, productie, views, werk
 
 WEB = Path(__file__).parent / "web"
 SLEUTEL = secrets.token_urlsafe(24)
@@ -131,6 +131,13 @@ def valideer_config(nieuw: dict) -> dict:
         raise ValueError("Max. stilte moet een getal zijn (bijv. 0.4)")
     cfg["montage"] = {"stiltes_eruit": bool(m["stiltes_eruit"]), "max_stilte": max_stilte,
                       "zoom": bool(m["zoom"]), "split_screen": bool(m["split_screen"])}
+    o = {**werk.OPSLAG_STANDAARD, **(cfg.get("opslag") or {}), **(nieuw.get("opslag") or {})}
+    try:
+        cfg["opslag"] = {"automatisch": bool(o["automatisch"]),
+                         "geplaatst_dagen": max(0, min(60, int(float(o["geplaatst_dagen"])))),
+                         "bron_dagen": max(1, min(90, int(float(o["bron_dagen"]))))}
+    except (TypeError, ValueError):
+        raise ValueError("Het aantal dagen bij Opslag moet een getal zijn")
     return cfg
 
 
@@ -194,7 +201,10 @@ class Handler(BaseHTTPRequestHandler):
         if pad == "/api/briefs":
             return self._json(briefs_lijst())
         if pad == "/api/config":
-            return self._json({**productie.config(), "montage": werk.montage_instellingen(), "whisper_modellen": WHISPER_MODELLEN})
+            return self._json({**productie.config(), "montage": werk.montage_instellingen(), "opslag": werk.opslag_instellingen(),
+                               "whisper_modellen": WHISPER_MODELLEN})
+        if pad == "/api/opslag":
+            return self._json(opslag.overzicht())
         if pad == "/api/jobs/open":
             return self._json(productie.open_jobs())
         if pad == "/api/views/staat":
@@ -278,6 +288,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True, "brief": brief})
         if pad == "/api/views/ophalen":
             return self._json({"ok": True, "staat": views.start()})
+        if pad == "/api/opslag/opruimen":
+            return self._json({"ok": True, "uitslag": opslag.ruim_op(), "opslag": opslag.overzicht()})
         if pad == "/api/systeem/bijwerken":
             return self._json({"ok": True, "update": bijwerken.start()})
         if pad == "/api/config":
@@ -328,6 +340,7 @@ def start(poort: int, browser: bool = True) -> None:
             WACHTRIJ.put(v["id"])
     claude_taken.herstel()
     threading.Thread(target=werker, daemon=True).start()
+    opslag.start_achtergrond()  # oude videobestanden opruimen (als dat aan staat), daarna elke 6 uur
     threading.Thread(target=claude_taken.werker, daemon=True).start()
     url = f"http://127.0.0.1:{poort}"
     try:

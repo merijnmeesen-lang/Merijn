@@ -584,6 +584,39 @@ function montageKaart() {
   </div>`;
 }
 
+const grootte = n => {
+  if (n == null) return "?";
+  const e = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  while (n >= 1024 && i < e.length - 1) { n /= 1024; i++; }
+  return (i >= 3 ? n.toFixed(1).replace(".", ",") : Math.round(n)) + " " + e[i];
+};
+
+function opslagKaart() {
+  const o = S.opslag, c = (S.config && S.config.opslag) || {};
+  if (!o) return "";
+  const delen = [["Bronvideo's (gedownloade podcasts)", o.bronvideos, "var(--accent)"], ["Gemaakte clips", o.clips, "var(--en)"],
+                 ["Klaar om te plaatsen", o.klaar, "var(--warn)"], ["Overig (tekst, ideeën, logboeken)", o.overig, "var(--flauw)"]];
+  const totaal = Math.max(o.totaal, 1);
+  const weinig = o.schijf_vrij != null && o.schijf_vrij < 20 * 1024 ** 3;
+  const u = o.uitslag;
+  return `<div class="kaart stapel" style="background:var(--paneel-2);box-shadow:none" data-formulier>
+    <div class="rij tussen"><h3>Opslag</h3><b>${grootte(o.totaal)}</b></div>
+    <div class="opslag-balk">${delen.map(([n, g, k]) => `<span style="width:${(100 * g / totaal).toFixed(1)}%;background:${k}" title="${esc(n)}"></span>`).join("")}</div>
+    <div class="opslag-lijst">${delen.map(([n, g, k]) => `<div><i style="background:${k}"></i><span>${esc(n)}</span><b>${grootte(g)}</b></div>`).join("")}</div>
+    ${o.schijf_vrij != null ? `<div class="${weinig ? "waarschuwing" : "zacht klein"}">${weinig ? "⚠️ " : ""}Vrij op je schijf: <b>${grootte(o.schijf_vrij)}</b> van ${grootte(o.schijf_totaal)}</div>` : ""}
+    <label class="rij" style="gap:10px;align-items:flex-start"><span class="schakelaar" style="margin-top:2px"><input type="checkbox" id="o-automatisch" ${c.automatisch !== false ? "checked" : ""}><span></span></span>
+      <span><b>Automatisch opruimen</b><div class="zacht klein">Bij het starten van Clip-OS, elke 6 uur en in de dagelijkse run.</div></span></label>
+    <div class="formulier">
+      <label class="veld">Geplaatste video's weg na (dagen)<input class="invoer" type="number" min="0" max="60" id="o-geplaatst_dagen" value="${esc(c.geplaatst_dagen ?? 2)}"></label>
+      <label class="veld">Bronvideo's weg na (dagen)<input class="invoer" type="number" min="1" max="90" id="o-bron_dagen" value="${esc(c.bron_dagen ?? 7)}"></label>
+    </div>
+    <div class="rij"><button class="knop zacht" data-actie="opruimen">${icoon("refresh")}Nu opruimen</button>
+      <span class="zacht klein">${o.laatst ? `Laatst: ${esc(relTijd(o.laatst))}${u && u.vrijgemaakt ? ` · ${grootte(u.vrijgemaakt)} vrijgemaakt` : ""}` : "Nog niet opgeruimd"}${o.totaal_vrijgemaakt ? ` · in totaal ${grootte(o.totaal_vrijgemaakt)}` : ""}</span></div>
+    <div class="tip">Ideeën, views, trendonderzoek en het lessenboek blijven altijd bewaard, net als video's die je nog moet plaatsen. Is een opgeruimde bronvideo later toch nodig (een idee goedkeuren of ‘Opnieuw maken’), dan downloadt Clip-OS hem vanzelf opnieuw. Instellingen bewaar je met de knop Opslaan hierboven.</div>
+  </div>`;
+}
+
 function bijwerkKaart() {
   const s = S.systeem;
   if (!s) return "";
@@ -619,6 +652,7 @@ function paginaInstellingen() {
       </div>
       <div class="rij"><button class="knop primair" data-actie="config-opslaan">${icoon("check")}Opslaan</button><span class="tip">Tip: "medium" is nauwkeuriger voor Nederlands, maar trager.</span></div>
       ${montageKaart()}
+      ${opslagKaart()}
       ${bijwerkKaart()}
       <h3 style="margin-top:10px">Thema</h3>
       <div class="segment">${[["auto", "Automatisch"], ["donker", "Donker"], ["licht", "Licht"]].map(([k, n]) => `<button class="${thema === k ? "aan" : ""}" data-actie="thema" data-thema="${k}">${n}</button>`).join("")}</div>
@@ -662,6 +696,7 @@ async function laadBriefs() { S.briefs = await api.get("/api/briefs"); }
 async function laadConfig() { S.config = await api.get("/api/config"); }
 async function laadKw() { S.kw = await api.get("/api/kostenwacht"); }
 async function laadSysteem() { S.systeem = await api.get("/api/systeem"); }
+async function laadOpslag() { S.opslag = await api.get("/api/opslag"); }
 async function laadOpen() { S.openJobs = await api.get("/api/jobs/open"); }
 async function laadViewsStaat() { S.viewsStaat = await api.get("/api/views/staat"); }
 async function laadTrends() { S.trends = (await api.get("/api/trends")).rapport; }
@@ -696,7 +731,7 @@ async function naarPagina() {
   S.bewerk = null; S.vuil = false;
   const p = huidig();
   try {
-    if (p === "instellingen") await Promise.all([laadConfig(), laadKw(), laadSysteem()]);
+    if (p === "instellingen") await Promise.all([laadConfig(), laadKw(), laadSysteem(), laadOpslag()]);
     if (p === "lessen") await laadLes();
     if (p === "trends") await laadTrends();
     if (p === "resultaten") await laadViewsStaat();
@@ -848,6 +883,13 @@ const ACTIES = {
     vergeet("lk-" + id);
     toast("Link opgeslagen. Klik op ‘Views ophalen’.");
   },
+  async opruimen() {
+    const r = await api.post("/api/opslag/opruimen");
+    S.opslag = r.opslag;
+    const u = r.uitslag;
+    toast(u.vrijgemaakt > 1024 * 1024 ? `🧹 ${grootte(u.vrijgemaakt)} vrijgemaakt (${u.bronvideos} bronvideo's, ${u.geplaatst} geplaatste video's)` : "Er was niets om op te ruimen");
+    renderPagina(true);
+  },
   async "config-opslaan"() {
     const talen = JSON.parse(JSON.stringify(S.config.talen || {}));
     document.querySelectorAll("[data-taal-veld]").forEach(el => { talen[el.dataset.code][el.dataset.taalVeld] = el.value; });
@@ -855,8 +897,12 @@ const ACTIES = {
       stiltes_eruit: $("#m-stiltes_eruit")?.checked ?? true, zoom: $("#m-zoom")?.checked ?? true,
       split_screen: $("#m-split_screen")?.checked ?? true, max_stilte: $("#m-max_stilte")?.value ?? 0.4,
     };
+    const opslagCfg = {
+      automatisch: $("#o-automatisch")?.checked ?? true,
+      geplaatst_dagen: $("#o-geplaatst_dagen")?.value ?? 2, bron_dagen: $("#o-bron_dagen")?.value ?? 7,
+    };
     S.config = (await api.post("/api/config", {
-      talen, max_ideeen_per_bron: $("#s-ideeen").value, whisper_model: $("#s-model").value, montage,
+      talen, max_ideeen_per_bron: $("#s-ideeen").value, whisper_model: $("#s-model").value, montage, opslag: opslagCfg,
     })).config;
     await laadConfig();
     S.vuil = false;

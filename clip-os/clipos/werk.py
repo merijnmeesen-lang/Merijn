@@ -40,6 +40,19 @@ def montage_instellingen() -> dict:
     return {**MONTAGE_STANDAARD, **{k: eigen[k] for k in MONTAGE_STANDAARD if k in eigen}}
 
 
+OPSLAG_STANDAARD = {"automatisch": True, "geplaatst_dagen": 2, "bron_dagen": 7}
+
+
+def opslag_instellingen() -> dict:
+    """Opruim-opties uit config.json (Instellingen → Opslag), met veilige standaardwaarden."""
+    standaardbestanden()
+    try:
+        eigen = lees_json(ROOT / "config.json").get("opslag") or {}
+    except (OSError, ValueError):
+        eigen = {}
+    return {**OPSLAG_STANDAARD, **{k: eigen[k] for k in OPSLAG_STANDAARD if k in eigen}}
+
+
 def systeemcertificaten() -> None:
     """Gebruik de certificaten van Windows/macOS in plaats van Pythons eigen lijst.
 

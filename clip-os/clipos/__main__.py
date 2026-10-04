@@ -56,6 +56,9 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--min-minuten", type=int, default=10)
     sub.add_parser("trends-klaar", help="rapport van de trendonderzoeker controleren en melden")
     sub.add_parser("views", help="views van geplaatste video's automatisch ophalen (via de link)")
+    s = sub.add_parser("opruimen", help="oude videobestanden opruimen (zie Instellingen → Opslag)")
+    s.add_argument("--proef", action="store_true", help="alleen laten zien wat er weg zou gaan")
+    s.add_argument("--altijd", action="store_true", help="ook opruimen als automatisch opruimen uit staat")
     a = p.parse_args(argv)
 
     if a.cmd == "kostenwacht":
@@ -71,6 +74,7 @@ def main(argv: list[str] | None = None) -> int:
     elif a.cmd == "transcribeer":
         cfg = productie.config()
         job_dir = werk.job_map(a.job)
+        productie.zorg_voor_bron(job_dir)
         taal = a.taal or productie.job_brief(job_dir).get("taal")
         print(transcriptie.transcribeer(job_dir, model=a.model or cfg["whisper_model"], taal=taal))
     elif a.cmd == "dag":
@@ -157,6 +161,20 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Views bijgewerkt voor {uit['bijgewerkt']} video('s).")
         for f in uit["fouten"]:
             print(f"⚠️  {f}")
+    elif a.cmd == "opruimen":
+        from . import opslag
+        if a.proef:
+            r = opslag.ruim_op(proef=True)
+            for i in r["items"]:
+                print(f"{i['soort']}\t{opslag.leesbaar(i['grootte'])}\t{i['pad']}")
+            print(f"Zou {opslag.leesbaar(r['vrij_te_maken'])} vrijmaken (er is niets verwijderd).")
+        else:
+            r = opslag.ruim_op() if a.altijd else opslag.automatisch()
+            if r is None:
+                print("Automatisch opruimen staat uit (Instellingen → Opslag). Gebruik --altijd om toch op te ruimen.")
+            else:
+                print(f"Opgeruimd: {opslag.leesbaar(r['vrijgemaakt'])} vrijgemaakt "
+                      f"({r['bronvideos']} bronvideo's, {r['geplaatst']} geplaatste video's, {r['overig']} overige bestanden).")
     elif a.cmd == "planning":
         from . import planning
         planning.uitleg()

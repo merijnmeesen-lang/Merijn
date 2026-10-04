@@ -24,6 +24,9 @@ in gewoon Nederlands uit en geef stap-voor-stap instructies.
   bestaande installaties hebben ze nog niet. `briefs/` (campagnes), `branding/`.
 - Montage: `clipos/tempo.py` (stiltes/uhm's eruit, zooms), `clipos/reframe.py` (gezicht volgen met YuNet-model in
   `clipos/modellen/`, split-screen bij twee sprekers), `clipos/render.py`. Aan/uit via `montage` in config.json.
+- `clipos/opslag.py`: opruimen (geplaatste video's na `geplaatst_dagen`, bronvideo's na `bron_dagen`; instelbaar via
+  `opslag` in config.json). Alleen binnen jobs/, output/ en data/claude/. Een opgeruimde bron haalt
+  `productie.zorg_voor_bron` vanzelf opnieuw binnen. Ideeën, views, trends en lessenboek nooit verwijderen.
 - `clipos/views.py`: views/likes van geplaatste video's ophalen via de link (yt-dlp, alleen lezen).
 - `clipos/trends.py` + agent `clip-trendonderzoeker` + `/trends`: marktonderzoek (pagina Trends).
 - Updates: `update.bat` (git pull). Eenmalige overstap vanaf de zip-versie: `overzetten.bat`.

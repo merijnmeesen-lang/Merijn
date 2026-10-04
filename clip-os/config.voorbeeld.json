@@ -19,5 +19,10 @@
     "max_stilte": 0.4,
     "zoom": true,
     "split_screen": true
+  },
+  "opslag": {
+    "automatisch": true,
+    "geplaatst_dagen": 2,
+    "bron_dagen": 7
   }
 }

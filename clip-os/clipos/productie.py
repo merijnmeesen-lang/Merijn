@@ -36,6 +36,19 @@ def nieuwe_job(bron_pad: str, brief: str | None = None, naam: str | None = None)
     return job
 
 
+def zorg_voor_bron(job_dir: Path) -> Path:
+    """De bronvideo kan zijn opgeruimd (Instellingen → Opslag). Is hij weer nodig, dan opnieuw binnenhalen."""
+    doel = job_dir / "bron.mp4"
+    if doel.exists():
+        return doel
+    meta = werk.lees_json(job_dir / "job.json")
+    bron_pad = str(meta.get("bron") or "")
+    if not (bron_pad.startswith(("http://", "https://")) or Path(bron_pad).expanduser().exists()):
+        raise RuntimeError("De bronvideo is opgeruimd en het originele bestand bestaat niet meer, dus deze video kan niet opnieuw gemaakt worden.")
+    print(f"Bronvideo was opgeruimd; opnieuw binnenhalen: {bron_pad}")
+    return bron.haal_binnen(bron_pad, job_dir)
+
+
 def job_brief(job_dir) -> dict:
     return werk.lees_brief(werk.lees_json(job_dir / "job.json").get("brief"))
 
@@ -131,6 +144,7 @@ def maak(vid: str) -> dict:
     try:
         job_dir = werk.job_map(v["job"])
         brief = job_brief(job_dir)
+        zorg_voor_bron(job_dir)
         video = render.render_clip(job_dir, {"id": v["clip_id"], "start": v["start"], "end": v["end"], "hook": v["hook"],
                                              "nadruk": v.get("nadruk") or []}, modus=v.get("modus", "auto"))
         r = werk.lees_json(video.parent / "render.json")
@@ -139,7 +153,7 @@ def maak(vid: str) -> dict:
         doel = pakket.maak_pakket(job_dir, v, brief, uitslag, taal_info(v.get("taal")))
         return inbox.zet(
             vid, status="klaar", map=str(doel.relative_to(werk.ROOT)), montage=montage, duur=round(r.get("duur") or v.get("duur") or 0, 1),
-            controle=[[ok, t] for ok, t in uitslag], controle_ok=controle.geslaagd(uitslag),
+            controle=[[ok, t] for ok, t in uitslag], controle_ok=controle.geslaagd(uitslag), video_opgeruimd=None,
         )
     except Exception as e:  # de fout moet zichtbaar worden in het dashboard
         traceback.print_exc()
