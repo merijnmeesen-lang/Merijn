@@ -276,6 +276,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"fout": str(e)}, 400)
         except (OSError, KeyError) as e:
             return self._json({"fout": f"Niet gevonden: {e}"}, 404)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return self._json({"fout": f"Er ging iets mis in Clip-OS ({type(e).__name__}: {e}). Stuur dit naar Claude."}, 500)
 
     def _post(self, pad: str, body: dict):
         if m := re.fullmatch(r"/api/claude/(video|dagelijks|campagne|trends|afmaken)", pad):
@@ -325,10 +329,10 @@ class Handler(BaseHTTPRequestHandler):
             inbox.zet(vid, status="geplaatst", link=link, geplaatst_op=inbox.nu())
         elif actie == "views" and v["status"] == "geplaatst":
             try:
-                views = int(str(body.get("views", "")).replace(".", "").replace(",", "").strip())
+                aantal = int(str(body.get("views", "")).replace(".", "").replace(",", "").strip())
             except ValueError:
                 raise ValueError("Views moet een getal zijn")
-            inbox.zet(vid, views=views, views_op=inbox.nu())
+            inbox.zet(vid, views=aantal, views_op=inbox.nu())
         else:
             return self._json({"fout": f"'{actie}' kan niet bij status '{v['status']}'"}, 409)
         return self._json({"ok": True, "voorstel": inbox.lees(vid)})

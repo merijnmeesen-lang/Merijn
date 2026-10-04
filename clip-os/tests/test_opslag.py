@@ -123,3 +123,33 @@ def test_opslag_instellingen_worden_gevalideerd():
 
 def test_leesbaar():
     assert opslag.leesbaar(3 * 1024 ** 3) == "3,0 GB" and opslag.leesbaar(512) == "512 B"
+
+
+# ---------- knoppen bij Plaatsen en Resultaten ----------
+
+class _NepHandler:
+    """Roept de echte dashboard-logica aan zonder webserver."""
+    def __init__(self):
+        from clipos import dashboard
+        self.h = dashboard.Handler.__new__(dashboard.Handler)
+        self.h._json = lambda d, code=200: (code, d)
+
+    def __call__(self, actie, vid, body):
+        return self.h._voorstel(actie, vid, body)
+
+
+@pytest.mark.parametrize("link", ["", "https://youtube.com/shorts/abcDEF12345"])
+def test_geplaatst_met_en_zonder_link(omgeving, link):
+    inbox.voeg_toe({"id": "t1", "titel": "T"})
+    inbox.zet("t1", status="klaar")
+    code, _ = _NepHandler()("geplaatst", "t1", {"link": link})
+    assert code == 200 and inbox.lees("t1")["status"] == "geplaatst" and inbox.lees("t1")["link"] == link
+
+
+def test_link_en_views_achteraf(omgeving):
+    inbox.voeg_toe({"id": "t1", "titel": "T"})
+    inbox.zet("t1", status="geplaatst")
+    h = _NepHandler()
+    assert h("link", "t1", {"link": "https://youtu.be/abcDEF12345"})[0] == 200
+    assert h("views", "t1", {"views": "1.234"})[0] == 200
+    assert inbox.lees("t1")["views"] == 1234
