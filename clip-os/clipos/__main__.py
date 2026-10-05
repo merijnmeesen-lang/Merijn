@@ -50,8 +50,9 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("id"); s.add_argument("tekst")
     sub.add_parser("resultaten", help="geplaatste video's met views (voor de analist)")
     sub.add_parser("planning", help="zo zet je de dagelijkse run aan")
-    s = sub.add_parser("trends", help="trending podcasts/interviews op YouTube zoeken (voor de trendonderzoeker)")
-    s.add_argument("zoekterm", nargs="?"); s.add_argument("--kanaal"); s.add_argument("--max", type=int, default=8)
+    s = sub.add_parser("trends", help="trending podcasts/interviews op YouTube zoeken (meerdere zoektermen tegelijk mag)")
+    s.add_argument("zoekterm", nargs="*"); s.add_argument("--kanaal", action="append", default=[])
+    s.add_argument("--max", type=int, default=8)
     s.add_argument("--periode", choices=["dag", "week", "maand"], default="week")
     s.add_argument("--min-minuten", type=int, default=10)
     sub.add_parser("trends-klaar", help="rapport van de trendonderzoeker controleren en melden")
@@ -141,10 +142,10 @@ def main(argv: list[str] | None = None) -> int:
     elif a.cmd == "trends":
         from . import trends
         if not (a.zoekterm or a.kanaal):
-            raise SystemExit("Geef een zoekterm of --kanaal <url>.")
+            raise SystemExit("Geef een of meer zoektermen en/of --kanaal <url>.")
         import yt_dlp
         try:
-            videos = trends.kanaal(a.kanaal, a.max, a.min_minuten) if a.kanaal else trends.zoek(a.zoekterm, a.periode, a.max, a.min_minuten)
+            videos = trends.zoek_meerdere(a.zoekterm, a.periode, a.max, a.min_minuten, kanalen=a.kanaal)
         except yt_dlp.utils.DownloadError as e:
             if "CERTIFICATE_VERIFY_FAILED" in str(e):
                 raise SystemExit("YouTube geweigerd door een beveiligingscertificaat (vaak antivirus zoals Norton). "

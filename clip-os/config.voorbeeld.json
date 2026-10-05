@@ -1,6 +1,7 @@
 {
   "max_ideeen_per_bron": 6,
   "whisper_model": "small",
+  "snel_uitschrijven": true,
   "dashboard_poort": 8765,
   "talen": {
     "en": {
@@ -18,7 +19,9 @@
     "stiltes_eruit": true,
     "max_stilte": 0.4,
     "zoom": true,
-    "split_screen": true
+    "split_screen": true,
+    "geluidseffecten": true,
+    "popup_tekst": true
   },
   "opslag": {
     "automatisch": true,

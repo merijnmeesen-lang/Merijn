@@ -18,6 +18,7 @@ ScaledBorderAndShadow: yes
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Onder,Arial,82,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,7,3,2,70,70,520,1
 Style: Hook,Arial,62,&H00000000,&H00000000,&H00FFFFFF,&H00000000,-1,0,0,0,100,100,0,0,3,20,0,8,90,90,300,1
+Style: Pop,Arial,118,&H0000E5FF,&H0000E5FF,&H00000000,&H78000000,-1,0,0,0,100,100,0,0,1,9,5,5,60,60,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -72,9 +73,17 @@ def plak_aanhangsels(woorden: list[dict]) -> list[dict]:
     return uit
 
 
+POP_DUUR = 1.4
+
+
 def maak_ass(woorden: list[dict], clip_start: float, duur: float, hook: str = "", hook_duur: float = 3.0,
-             hook_y: int = 300, onder_pos: tuple[int, int] | None = None) -> str:
-    """woorden: absolute tijden uit het transcript; ze worden omgerekend naar clip-tijd."""
+             hook_y: int = 300, onder_pos: tuple[int, int] | None = None,
+             split_intervallen: list[tuple[float, float]] | None = None,
+             popups: list[tuple[float, str, int]] | None = None) -> str:
+    """woorden: absolute tijden uit het transcript; ze worden omgerekend naar clip-tijd.
+
+    split_intervallen: stukken (clip-tijd) met twee mensen boven elkaar; ondertitels staan dan op de naad (540, 960).
+    popups: [(tijd, tekst, y)] grote tekst die even oppopt bij een sterk getal of woord."""
     rel = [
         {"start": max(0.0, w["start"] - clip_start), "end": min(duur, w["end"] - clip_start), "woord": schoon(w["woord"]).upper()}
         for w in plak_aanhangsels([w for w in woorden if schoon(w["woord"])])
@@ -84,7 +93,19 @@ def maak_ass(woorden: list[dict], clip_start: float, duur: float, hook: str = ""
         regels.append(f"Dialogue: 1,{ass_tijd(0)},{ass_tijd(min(hook_duur, duur))},Hook,,0,0,0,,"
                       f"{{\\an8\\pos(540,{int(hook_y)})}}{schoon(hook)}\n")
 
-    plek = f"{{\\an5\\pos({onder_pos[0]},{onder_pos[1]})}}" if onder_pos else ""
+    for t, tekst, y in popups or []:
+        if 0 <= t < duur and schoon(tekst):
+            regels.append(f"Dialogue: 2,{ass_tijd(t)},{ass_tijd(min(duur, t + POP_DUUR))},Pop,,0,0,0,,"
+                          f"{{\\an5\\pos(540,{int(y)})\\fscx40\\fscy40\\t(0,110,\\fscx114\\fscy114)"
+                          f"\\t(110,200,\\fscx100\\fscy100)\\fad(0,160)}}{schoon(tekst).upper()}\n")
+
+    vast = f"{{\\an5\\pos({onder_pos[0]},{onder_pos[1]})}}" if onder_pos else ""
+
+    def plek(t: float) -> str:
+        if any(a - 0.05 <= t < b for a, b in split_intervallen or []):
+            return "{\\an5\\pos(540,960)}"
+        return vast
+
     groepen = groepeer(rel)
     for gi, groep in enumerate(groepen):
         volgende_start = groepen[gi + 1][0]["start"] if gi + 1 < len(groepen) else duur
@@ -100,5 +121,5 @@ def maak_ass(woorden: list[dict], clip_start: float, duur: float, hook: str = ""
                 (f"{{\\c{GEEL}}}{x['woord']}{{\\c{WIT}}}" if j == i else x["woord"])
                 for j, x in enumerate(groep)
             ]
-            regels.append(f"Dialogue: 0,{ass_tijd(start)},{ass_tijd(eind)},Onder,,0,0,0,,{plek}{' '.join(delen)}\n")
+            regels.append(f"Dialogue: 0,{ass_tijd(start)},{ass_tijd(eind)},Onder,,0,0,0,,{plek(groep[0]['start'])}{' '.join(delen)}\n")
     return "".join(regels)

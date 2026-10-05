@@ -27,17 +27,20 @@ def laad_audio(bron: Path):
     return np.frombuffer(res.stdout, dtype=np.float32)
 
 
-def transcribeer(job_dir: Path, model: str = "small", taal: str | None = None) -> Path:
-    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")  # onschuldige Windows-waarschuwing
-    from faster_whisper import WhisperModel
+def threads() -> int:
+    """Aantal rekenkernen voor het spraakmodel. Standaard gebruikt faster-whisper er maar 4."""
+    n = os.cpu_count() or 4
+    return max(2, n // 2) if n >= 8 else n  # bij hyperthreading: één per echte kern is het snelst
 
-    bron = job_dir / "bron.mp4"
-    print("Geluid uit de video halen…", flush=True)
-    audio = laad_audio(bron)
-    print(f"Spraakmodel '{model}' laden (eerste keer: eenmalige gratis download)…", flush=True)
-    wm = WhisperModel(model, device="cpu", compute_type="int8")
-    segmenten, info = wm.transcribe(audio, language=taal, word_timestamps=True, vad_filter=True)
 
+def snel_aan() -> bool:
+    try:
+        return bool(werk.lees_json(werk.ROOT / "config.json").get("snel_uitschrijven", True))
+    except (OSError, ValueError):
+        return True
+
+
+def _verzamel(segmenten, info) -> dict:
     data = {"taal": info.language, "duur": info.duration, "segmenten": []}
     laatst = -1
     for seg in segmenten:
@@ -55,6 +58,37 @@ def transcribeer(job_dir: Path, model: str = "small", taal: str | None = None) -
         if pct > laatst:
             print(f"⏱ {pct}% uitgeschreven ({werk.tijd(seg.end)} van {werk.tijd(info.duration)})", flush=True)
             laatst = pct
+    data["segmenten"].sort(key=lambda s: s["start"])
+    return data
+
+
+def transcribeer(job_dir: Path, model: str = "small", taal: str | None = None, snel: bool | None = None) -> Path:
+    """Spraak → tekst met tijd per woord.
+
+    Snel (standaard): meerdere stukken audio tegelijk door het model (faster-whisper 'batched') en één zoekpad
+    (beam 1). Ongeveer 3x sneller dan de oude manier, met nagenoeg dezelfde tekst. Lukt dat niet, dan valt
+    Clip-OS vanzelf terug op de oude manier. Uit te zetten in Instellingen (Snel uitschrijven)."""
+    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")  # onschuldige Windows-waarschuwing
+    from faster_whisper import WhisperModel
+
+    bron = job_dir / "bron.mp4"
+    print("Geluid uit de video halen…", flush=True)
+    audio = laad_audio(bron)
+    print(f"Spraakmodel '{model}' laden (eerste keer: eenmalige gratis download)…", flush=True)
+    wm = WhisperModel(model, device="cpu", compute_type="int8", cpu_threads=threads())
+    opties = {"language": taal, "word_timestamps": True, "vad_filter": True}
+    data = None
+    if snel_aan() if snel is None else snel:
+        try:
+            from faster_whisper import BatchedInferencePipeline
+
+            print(f"Snel uitschrijven: meerdere stukken tegelijk, {threads()} rekenkernen…", flush=True)
+            data = _verzamel(*BatchedInferencePipeline(model=wm).transcribe(audio, batch_size=8, beam_size=1, **opties))
+        except Exception as e:  # oudere faster-whisper of te weinig geheugen: gewoon de normale manier
+            print(f"Snelle modus lukte niet ({type(e).__name__}: {e}); verder op de normale manier…", flush=True)
+            data = None
+    if data is None:
+        data = _verzamel(*wm.transcribe(audio, **opties))
     werk.schrijf_json(job_dir / "transcript.json", data)
     schrijf_leesbaar(job_dir, data)
     return job_dir / "transcript.txt"

@@ -105,6 +105,11 @@ def valideer_clips(job_dir) -> tuple[list[dict], list[str]]:
             if not isinstance(t, (int, float)) or not float(c["start"]) <= t <= float(c["end"]):
                 fouten.append(f"{cid}: 'nadruk' moet tijden (seconden) binnen de clip bevatten")
                 break
+        for k in c.get("kernwoorden") or []:
+            if not (isinstance(k, dict) and isinstance(k.get("t"), (int, float)) and float(c["start"]) <= k["t"] <= float(c["end"])
+                    and 0 < len(str(k.get("tekst", "")).strip()) <= 28):
+                fouten.append(f"{cid}: 'kernwoorden' moet zijn [{{\"t\": seconden binnen de clip, \"tekst\": max 28 tekens}}]")
+                break
         if not (brief["min_seconden"] - 1 <= lengte <= brief["max_seconden"] - 1):
             fouten.append(f"{cid}: lengte {lengte:.1f}s, moet {brief['min_seconden']}-{brief['max_seconden'] - 1}s zijn")
     return clips, fouten
@@ -130,6 +135,8 @@ def registreer_ideeen(job: str) -> list[str]:
             "beschrijving": c.get("beschrijving", ""), "hashtags": c.get("hashtags", []),
             "reden": c.get("reden", ""), "score": c.get("score"), "citaat": c.get("citaat", ""),
             "nadruk": [float(t) for t in (c.get("nadruk") or []) if isinstance(t, (int, float))][:3],
+            "kernwoorden": [{"t": float(k["t"]), "tekst": str(k["tekst"]).strip()[:28]} for k in (c.get("kernwoorden") or [])
+                            if isinstance(k, dict) and isinstance(k.get("t"), (int, float)) and str(k.get("tekst", "")).strip()][:3],
             "bron_titel": bron_info.get("titel") or Path(meta.get("bron", "")).name, "bron_kanaal": bron_info.get("kanaal", ""),
         }):
             nieuw.append(vid)
@@ -146,9 +153,11 @@ def maak(vid: str) -> dict:
         brief = job_brief(job_dir)
         zorg_voor_bron(job_dir)
         video = render.render_clip(job_dir, {"id": v["clip_id"], "start": v["start"], "end": v["end"], "hook": v["hook"],
-                                             "nadruk": v.get("nadruk") or []}, modus=v.get("modus", "auto"))
+                                             "nadruk": v.get("nadruk") or [], "kernwoorden": v.get("kernwoorden") or []},
+                                    modus=v.get("modus", "auto"))
         r = werk.lees_json(video.parent / "render.json")
-        montage = {k: r.get(k) for k in ("modus", "ingekort", "knippen", "zooms", "duur")}
+        montage = {k: r.get(k) for k in ("modus", "ingekort", "knippen", "zooms", "duur", "geluidseffecten", "split_stukken")}
+        montage["popups"] = len(r.get("popups") or [])
         uitslag = controle.controleer(video, v, brief)
         doel = pakket.maak_pakket(job_dir, v, brief, uitslag, taal_info(v.get("taal")))
         return inbox.zet(

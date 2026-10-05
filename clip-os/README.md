@@ -8,8 +8,7 @@ Elke ochtend (automatisch)                 Jij (±10 min per dag)
 ───────────────────────────                ─────────────────────────────
 🔭 Scout: nieuwe video's van je campagnes
 📥 Bron: downloaden + transcriberen
-🎣 Hook-jager (Claude): sterkste momenten
-✍️ Copywriter (Claude): titel + hashtags
+🎣 Hook-jager (Claude): sterkste momenten + titel/hashtags
 📊 Analist (Claude): leert van je views
 🔔 Melding in Clip-OS             ──────►  💡 Ideeën bekijken → Akkoord / Afwijzen
                                                      │
@@ -110,9 +109,8 @@ In Clip-OS: **Instellingen → Clip-OS bijwerken → Zoek en installeer updates*
 | Regisseur | Claude (`/dagelijks`, `/video`) | stuurt de rest aan, schrijft de dagelijkse melding |
 | Scout | Claude (`clip-scout`) + code | campagnetekst omzetten naar een brief; nieuwe video's van kanalen vinden |
 | Bron | code (yt-dlp, faster-whisper) | downloaden en transcriberen, lokaal |
-| Hook-jager | Claude (`clip-hookjager`) | sterkste momenten kiezen, met score en reden |
-| Copywriter | Claude (`clip-copywriter`) | titel, beschrijving en hashtags volgens de brief |
-| Editor | code (ffmpeg, OpenCV) | 9:16 met gezichtsvolging, woord-voor-woord ondertitels, hook bovenin, geluid op −14 LUFS |
+| Hook-jager | Claude (`clip-hookjager`) | sterkste momenten kiezen (score, reden, kernwoorden) en titel, beschrijving en hashtags volgens de brief |
+| Editor | code (ffmpeg, OpenCV) | 9:16 per camerashot (gezicht volgen / twee sprekers onder elkaar), stiltes eruit, zooms, woord-voor-woord ondertitels, hook, pop-up tekst, geluidseffecten, geluid op −14 LUFS |
 | Controleur | code + Claude (`clip-controleur`) | techniek- en brief-eisen, en een blik op de beelden |
 | Analist | Claude (`clip-analist`) | leert van views en afwijzingen, werkt `lessenboek.md` bij |
 

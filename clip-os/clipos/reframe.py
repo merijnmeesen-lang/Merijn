@@ -31,22 +31,113 @@ def _detector():
     return detect_haar
 
 
-def shot_grenzen(bron: Path, start: float, end: float, drempel: float = 0.3) -> list[float]:
-    """Tijden (t.o.v. clipstart) waarop de camera wisselt naar een ander shot, via de scènedetectie van ffmpeg."""
-    import re
+KLEIN = (64, 36)  # mini-beeldjes voor het vinden van camerawissels
+
+
+def knippen_uit_beelden(beelden, fps: float, duur: float, min_verschil: float = 8.0, factor: float = 5.0) -> list[float]:
+    """Camerawissels vinden in mini-beeldjes (elk frame, 64x36): een knip is een sprong die veel groter is dan
+    het gewone verschil tussen frames in de seconde eromheen. Werkt ook als twee camerahoeken op elkaar lijken
+    (donkere studio), waar de vaste drempel van ffmpeg's scènedetectie knippen mist."""
+    import numpy as np
+
+    if len(beelden) < 3 or not fps:
+        return []
+    d = np.abs(np.diff(beelden.astype(np.int16), axis=0)).mean(axis=(1, 2, 3))
+    venster = max(2, int(round(fps)))
+    uit: list[float] = []
+    for i, x in enumerate(d):
+        if x < min_verschil or x < d[max(0, i - 2): i + 3].max():
+            continue  # te klein, of niet de piek
+        buren = np.concatenate([d[max(0, i - venster): max(0, i - 1)], d[i + 2: i + 2 + venster]])
+        basis = float(np.median(buren)) if len(buren) else 0.0
+        if x >= factor * max(basis, 1.0):
+            t = (i + 1) / fps
+            if 0.2 < t < duur - 0.1 and (not uit or t - uit[-1] > 0.4):  # flits/overgang telt als één
+                uit.append(round(t, 3))
+    return uit
+
+
+def _mini(raw: bytes):
+    import numpy as np
+
+    b, h = KLEIN
+    n = len(raw) // (b * h * 3)
+    return np.frombuffer(raw[: n * b * h * 3], np.uint8).reshape(n, h, b, 3)
+
+
+def shot_grenzen(bron: Path, start: float, end: float) -> list[float]:
+    """Tijden (t.o.v. clipstart) waarop de camera wisselt naar een ander shot."""
     import subprocess
 
     from . import werk
 
-    cmd = [werk.ffmpeg(), "-hide_banner", "-nostats", "-ss", f"{start:.3f}", "-t", f"{end - start:.3f}", "-i", str(bron),
-           "-an", "-vf", f"scale=320:-2,select='gt(scene\\,{drempel})',showinfo", "-f", "null", "-"]
-    res = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
-    tijden = sorted(float(m) for m in re.findall(r"pts_time:\s*([0-9.]+)", res.stderr))
-    uit = []
-    for t in tijden:  # twee knippen vlak na elkaar (flits/overgang) tellen als één
-        if 0.2 < t < end - start - 0.1 and (not uit or t - uit[-1] > 0.4):
-            uit.append(round(t, 3))
-    return uit
+    fps = werk.video_info(bron)["fps"] or 30.0
+    cmd = [werk.ffmpeg(), "-hide_banner", "-loglevel", "error", "-nostdin", "-ss", f"{start:.3f}", "-t", f"{end - start:.3f}",
+           "-i", str(bron), "-an", "-vf", f"scale={KLEIN[0]}:{KLEIN[1]}:flags=area,format=rgb24", "-f", "rawvideo", "-"]
+    res = subprocess.run(cmd, capture_output=True)
+    return knippen_uit_beelden(_mini(res.stdout), fps, end - start)
+
+
+def analyseer(bron: Path, start: float, end: float, breedte: int | None = None, hoogte: int | None = None,
+              fps: float | None = None, per_seconde: int = 4) -> tuple[list[float], list[tuple]]:
+    """Eén keer door de clip heen: camerawissels én gezichten tegelijk.
+
+    ffmpeg decodeert de clip één keer. Elk frame gaat als mini-beeldje naar de knip-detectie (exacte tijden),
+    en `per_seconde` beelden per seconde (960 breed) gaan naar de gezichtsdetector. Veel sneller dan voor elke
+    meting apart naar een tijdstip in de video springen. Geeft (knippen, posities)."""
+    import os
+    import subprocess
+    import tempfile
+
+    import numpy as np
+
+    from . import werk
+
+    if not (breedte and hoogte and fps):
+        info = werk.video_info(bron)
+        breedte, hoogte, fps = info["breedte"], info["hoogte"], info["fps"] or 30.0
+    bb = min(960, breedte - breedte % 2)
+    bh = max(2, int(round(hoogte * bb / breedte / 2)) * 2)
+    graaf = (f"[0:v]split=2[s][f];[s]scale={KLEIN[0]}:{KLEIN[1]}:flags=area,format=rgb24[sv];"
+             f"[f]fps={per_seconde},scale={bb}:{bh}[fv]")
+    fd, mini_pad = tempfile.mkstemp(suffix=".rgb")
+    os.close(fd)
+    cmd = [werk.ffmpeg(), "-y", "-hide_banner", "-loglevel", "error", "-nostdin", "-ss", f"{start:.3f}", "-t", f"{end - start:.3f}",
+           "-i", str(bron), "-an", "-filter_complex", graaf,
+           "-map", "[sv]", "-f", "rawvideo", mini_pad, "-map", "[fv]", "-f", "rawvideo", "-pix_fmt", "bgr24", "-"]
+    detect = _detector()
+    posities: list[tuple] = []
+    grootte = bb * bh * 3
+    try:
+        with tempfile.TemporaryFile() as log:
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=log, stdin=subprocess.DEVNULL)
+            k = 0
+            while True:
+                buf = proc.stdout.read(grootte)
+                if len(buf) < grootte:
+                    break
+                posities.append(_meting(k / per_seconde, np.frombuffer(buf, np.uint8).reshape(bh, bb, 3), detect))
+                k += 1
+            proc.stdout.close()
+            proc.wait()
+        with open(mini_pad, "rb") as f:
+            knippen = knippen_uit_beelden(_mini(f.read()), fps, end - start)
+    finally:
+        try:
+            os.unlink(mini_pad)
+        except OSError:
+            pass
+    return knippen, posities
+
+
+def _meting(t: float, beeld, detect) -> tuple:
+    kh, kb = beeld.shape[:2]
+    gezichten = sorted(detect(beeld), key=lambda g: -(g[2] * g[3]))[:2]
+    lijst = [{"cx": (x + b / 2) / kb, "cy": (y + gh / 2) / kh, "onder": min(1.0, (y + gh * kin) / kh), "grootte": gh / kh}
+             for x, y, b, gh, kin in gezichten]
+    if lijst:
+        return (round(t, 3), lijst[0]["cx"], lijst[0]["onder"], lijst)
+    return (round(t, 3), None, None, [])
 
 
 def gezicht_posities(bron: Path, start: float, end: float, stap: float = 0.5, knippen: list[float] | None = None) -> list[tuple]:
@@ -70,17 +161,10 @@ def gezicht_posities(bron: Path, start: float, end: float, stap: float = 0.5, kn
         ok, frame = cap.read()
         if not ok:
             break
-        h, w = frame.shape[:2]
+        w = frame.shape[1]
         schaal = 960 / w if w > 960 else 1.0  # 960 breed: ook kleinere gezichten verderop in beeld
         klein = cv2.resize(frame, None, fx=schaal, fy=schaal) if schaal != 1.0 else frame
-        kh, kb = klein.shape[:2]
-        gezichten = sorted(detect(klein), key=lambda g: -(g[2] * g[3]))[:2]
-        lijst = [{"cx": (x + b / 2) / kb, "cy": (y + gh / 2) / kh, "onder": min(1.0, (y + gh * kin) / kh), "grootte": gh / kh}
-                 for x, y, b, gh, kin in gezichten]
-        if lijst:
-            uit.append((t - start, lijst[0]["cx"], lijst[0]["onder"], lijst))
-        else:
-            uit.append((t - start, None, None, []))
+        uit.append(_meting(t - start, klein, detect))
     cap.release()
     return uit
 
@@ -104,9 +188,9 @@ def split_analyse(posities, min_aandeel: float = 0.6) -> dict | None:
     return {"links": gemiddeld(0), "rechts": gemiddeld(1)}
 
 
-def split_crop(persoon: dict, bron_b: int, bron_h: int) -> tuple[int, int, int, int]:
+def split_crop(persoon: dict, bron_b: int, bron_h: int, ch: int | None = None) -> tuple[int, int, int, int]:
     """Uitsnede (b, h, x, y) in pixels rond één persoon, in de verhouding 9:8 (één helft van 1080x1920)."""
-    ch = min(bron_h, max(int(bron_h * 0.45), int(persoon["grootte"] * bron_h * 3.0)))
+    ch = ch or min(bron_h, max(int(bron_h * 0.45), int(persoon["grootte"] * bron_h * 3.0)))
     cb = int(ch * 9 / 8)
     if cb > bron_b:
         cb = bron_b
@@ -115,6 +199,47 @@ def split_crop(persoon: dict, bron_b: int, bron_h: int) -> tuple[int, int, int, 
     x = int(persoon["cx"] * bron_b - cb / 2)
     y = int(persoon["cy"] * bron_h - ch * 0.5)  # gezicht in het midden: ruimte boven het hoofd (hook) en voor de schouders
     return cb, ch, max(0, min(bron_b - cb, x)), max(0, min(bron_h - ch, y))
+
+
+def _volg_shot(shot, begin: float, drempel: float, venster: int, min_gezicht: float) -> list[tuple[float, float | None]]:
+    """Uitsnede-posities binnen één camerashot. Geen (of bijna geen) gezicht: [(begin, None)]."""
+    gevonden = [p[1] for p in shot if p[1] is not None]
+    if len(gevonden) < max(1, min_gezicht * len(shot)):
+        return [(begin, None)]
+    xs, laatste = [], None
+    for p in shot:
+        laatste = p[1] if p[1] is not None else laatste
+        xs.append(laatste)
+    xs = [gevonden[0] if x is None else x for x in xs]
+    half = venster // 2
+    glad = [median(xs[max(0, i - half): i + half + 1]) for i in range(len(xs))]
+    huidig = glad[0]
+    uit = [(begin, huidig)]
+    for i in range(1, len(glad)):
+        volgende = glad[i + 1] if i + 1 < len(glad) else glad[i]
+        if abs(glad[i] - huidig) > drempel and abs(volgende - huidig) > drempel:
+            huidig = glad[i]
+            uit.append((shot[i][0], huidig))
+    return uit
+
+
+def _shots(posities, duur: float, knippen):
+    grenzen = [0.0] + sorted(k for k in (knippen or []) if 0 < k < duur)
+    for nr, begin in enumerate(grenzen):
+        eind = grenzen[nr + 1] if nr + 1 < len(grenzen) else float("inf")
+        yield begin, [p for p in posities if begin <= p[0] < eind]
+
+
+def _samenvoegen(segmenten, drempel: float):
+    samen = [segmenten[0]]
+    for t, x in segmenten[1:]:
+        vorige = samen[-1][1]
+        if x is not None and vorige is not None and abs(x - vorige) <= drempel / 2:
+            continue
+        if x is None and vorige is None:
+            continue
+        samen.append((t, x))
+    return samen
 
 
 def crop_segmenten(posities, duur: float, drempel: float = 0.08, venster: int = 5,
@@ -130,41 +255,71 @@ def crop_segmenten(posities, duur: float, drempel: float = 0.08, venster: int = 
     """
     if not posities:
         return [(0.0, 0.5)]
-    grenzen = [0.0] + sorted(k for k in (knippen or []) if 0 < k < duur)
     segmenten: list[tuple[float, float | None]] = []
-    for nr, begin in enumerate(grenzen):
-        eind = grenzen[nr + 1] if nr + 1 < len(grenzen) else float("inf")
-        shot = [p for p in posities if begin <= p[0] < eind]
-        gevonden = [p[1] for p in shot if p[1] is not None]
-        if not shot or len(gevonden) < max(1, min_gezicht * len(shot)):
-            x_shot = None if shot else (segmenten[-1][1] if segmenten else 0.5)
-            if not segmenten or segmenten[-1][1] != x_shot or x_shot is None:
-                segmenten.append((begin, x_shot))
+    for begin, shot in _shots(posities, duur, knippen):
+        if shot:
+            segmenten += _volg_shot(shot, begin, drempel, venster, min_gezicht)
+        elif segmenten:  # shot zonder metingen (heel kort): vorige positie aanhouden
+            segmenten.append((begin, segmenten[-1][1]))
+    if not segmenten:
+        return [(0.0, 0.5)]
+    return [(t, x) for t, x in _samenvoegen(segmenten, drempel) if t < duur]
+
+
+def indeling(posities, duur: float, knippen: list[float] | None = None, split: bool = True,
+             drempel: float = 0.08) -> list[dict]:
+    """Beeldindeling per camerashot: [{"t", "soort": "volg"|"split"|"vol", ...}].
+
+    - "split": twee mensen naast elkaar in dit shot (bijv. een breed shot) → boven elkaar in beeld;
+    - "volg": één persoon → uitsnede volgt het gezicht ("x");
+    - "vol": geen gezicht (bijv. over de schouder gefilmd) → het hele beeld met wazige balken."""
+    if not posities:
+        return [{"t": 0.0, "soort": "volg", "x": 0.5}]
+    uit: list[dict] = []
+    for begin, shot in _shots(posities, duur, knippen):
+        if not shot:
+            if uit:
+                uit.append({**uit[-1], "t": begin})
             continue
-        xs, laatste = [], None
-        for p in shot:
-            laatste = p[1] if p[1] is not None else laatste
-            xs.append(laatste)
-        xs = [gevonden[0] if x is None else x for x in xs]
-        half = venster // 2
-        glad = [median(xs[max(0, i - half): i + half + 1]) for i in range(len(xs))]
-        huidig = glad[0]
-        segmenten.append((begin, huidig))
-        for i in range(1, len(glad)):
-            volgende = glad[i + 1] if i + 1 < len(glad) else glad[i]
-            if abs(glad[i] - huidig) > drempel and abs(volgende - huidig) > drempel:
-                huidig = glad[i]
-                segmenten.append((shot[i][0], huidig))
-    # opeenvolgende stukken met (bijna) dezelfde positie samenvoegen
-    samen = [segmenten[0]]
-    for t, x in segmenten[1:]:
-        vorige = samen[-1][1]
-        if x is not None and vorige is not None and abs(x - vorige) <= drempel / 2:
+        twee = split_analyse(shot) if split and len(shot) >= 2 else None
+        if twee:
+            uit.append({"t": begin, "soort": "split", **twee})
             continue
-        if x is None and vorige is None:
+        for t, x in _volg_shot(shot, begin, drempel, 5, 0.25):
+            uit.append({"t": t, "soort": "vol", "x": None} if x is None else {"t": t, "soort": "volg", "x": x})
+    if not uit:
+        return [{"t": 0.0, "soort": "volg", "x": 0.5}]
+    samen = [uit[0]]
+    for seg in uit[1:]:
+        vorige = samen[-1]
+        if seg["soort"] == vorige["soort"] == "vol":
             continue
-        samen.append((t, x))
-    return [(t, x) for t, x in samen if t < duur]
+        if seg["soort"] == vorige["soort"] == "volg" and abs(seg["x"] - vorige["x"]) <= drempel / 2:
+            continue
+        samen.append(seg)
+    return [seg for seg in samen if seg["t"] < duur]
+
+
+def intervallen(lagen: list[dict], soort: str, duur: float) -> list[tuple[float, float]]:
+    """Stukken (in clip-tijd) waarin de indeling `soort` geldt."""
+    uit = []
+    for i, seg in enumerate(lagen):
+        if seg["soort"] == soort:
+            eind = lagen[i + 1]["t"] if i + 1 < len(lagen) else duur
+            if eind > seg["t"]:
+                if uit and abs(uit[-1][1] - seg["t"]) < 1e-6:
+                    uit[-1] = (uit[-1][0], eind)
+                else:
+                    uit.append((seg["t"], eind))
+    return uit
+
+
+def stap_expressie(paren: list[tuple[float, int]]) -> str:
+    """ffmpeg-expressie die per tijdstip een vaste waarde geeft: [(vanaf_tijd, waarde)]."""
+    expr = str(paren[-1][1])
+    for i in range(len(paren) - 2, -1, -1):
+        expr = f"if(lt(t\\,{paren[i + 1][0]:.3f})\\,{paren[i][1]}\\,{expr})"
+    return expr
 
 
 def geen_gezicht_intervallen(segmenten, duur: float) -> list[tuple[float, float]]:

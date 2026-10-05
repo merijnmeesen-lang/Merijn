@@ -120,7 +120,8 @@ def test_geldige_link(link, ok):
 def test_montage_instellingen_worden_gevalideerd():
     from clipos import dashboard
     cfg = dashboard.valideer_config({"montage": {"stiltes_eruit": False, "max_stilte": "9", "zoom": 1}})
-    assert cfg["montage"] == {"stiltes_eruit": False, "max_stilte": 1.5, "zoom": True, "split_screen": True}
+    assert cfg["montage"] == {"stiltes_eruit": False, "max_stilte": 1.5, "zoom": True, "split_screen": True,
+                              "geluidseffecten": True, "popup_tekst": True}
     with pytest.raises(ValueError):
         dashboard.valideer_config({"montage": {"max_stilte": "veel"}})
 

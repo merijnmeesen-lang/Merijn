@@ -110,6 +110,7 @@ def valideer_config(nieuw: dict) -> dict:
     if model not in WHISPER_MODELLEN:
         raise ValueError("Onbekend spraakmodel")
     cfg["whisper_model"] = model
+    cfg["snel_uitschrijven"] = bool(nieuw.get("snel_uitschrijven", cfg.get("snel_uitschrijven", True)))
     talen = {}
     for code, t in (nieuw.get("talen") or cfg.get("talen", {})).items():
         if not re.fullmatch(r"[a-z]{2,3}", code):
@@ -130,7 +131,8 @@ def valideer_config(nieuw: dict) -> dict:
     except (TypeError, ValueError):
         raise ValueError("Max. stilte moet een getal zijn (bijv. 0.4)")
     cfg["montage"] = {"stiltes_eruit": bool(m["stiltes_eruit"]), "max_stilte": max_stilte,
-                      "zoom": bool(m["zoom"]), "split_screen": bool(m["split_screen"])}
+                      "zoom": bool(m["zoom"]), "split_screen": bool(m["split_screen"]),
+                      "geluidseffecten": bool(m["geluidseffecten"]), "popup_tekst": bool(m["popup_tekst"])}
     o = {**werk.OPSLAG_STANDAARD, **(cfg.get("opslag") or {}), **(nieuw.get("opslag") or {})}
     try:
         cfg["opslag"] = {"automatisch": bool(o["automatisch"]),
@@ -202,6 +204,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(briefs_lijst())
         if pad == "/api/config":
             return self._json({**productie.config(), "montage": werk.montage_instellingen(), "opslag": werk.opslag_instellingen(),
+                               "snel_uitschrijven": productie.config().get("snel_uitschrijven", True),
                                "whisper_modellen": WHISPER_MODELLEN})
         if pad == "/api/opslag":
             return self._json(opslag.overzicht())

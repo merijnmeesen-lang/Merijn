@@ -339,10 +339,12 @@ function paginaStudio() {
 
 function montageLabels(m) {
   if (!m) return "";
-  const indeling = { volg: "🎯 Gezicht volgen", split: "👥 Split-screen", vol: "🖼️ Wazige balken" }[m.modus] || "";
+  const indeling = { volg: "🎯 Gezicht volgen", split: "👥 Split-screen", mix: "🎯👥 Volgen + split-screen", vol: "🖼️ Wazige balken" }[m.modus] || "";
   return [indeling && `<span class="badge">${indeling}</span>`,
     m.ingekort > 0.2 && `<span class="badge">✂️ ${String(m.ingekort).replace(".", ",")} s stiltes eruit</span>`,
-    m.zooms && `<span class="badge">🔍 ${m.zooms} zoom${m.zooms > 1 ? "s" : ""}</span>`].filter(Boolean).join("");
+    m.zooms && `<span class="badge">🔍 ${m.zooms} zoom${m.zooms > 1 ? "s" : ""}</span>`,
+    m.popups && `<span class="badge">💬 ${m.popups} pop-up${m.popups > 1 ? "s" : ""}</span>`,
+    m.geluidseffecten && `<span class="badge">🔊 ${m.geluidseffecten} geluidseffecten</span>`].filter(Boolean).join("");
 }
 
 function paginaPlaatsen() {
@@ -579,7 +581,9 @@ function montageKaart() {
     ${vink("stiltes_eruit", "Stiltes en uhm's eruit knippen", "Pauzes worden ingekort en stopwoorden weggehaald. Strakker tempo, mensen kijken langer.")}
     <label class="veld" style="max-width:260px">Pauzes langer dan (seconden) worden geknipt<input class="invoer" type="number" step="0.05" min="0.2" max="1.5" id="m-max_stilte" value="${esc(m.max_stilte ?? 0.4)}"></label>
     ${vink("zoom", "Inzoomen", "Lichte zoom na knippen en een sterkere zoom op de sterkste zin (aangewezen door de Hook-jager).")}
-    ${vink("split_screen", "Split-screen bij twee sprekers", "Zitten twee mensen naast elkaar in beeld, dan komen ze boven elkaar te staan met de ondertitels in het midden.")}
+    ${vink("split_screen", "Split-screen bij twee sprekers", "Per camerashot: zijn twee mensen samen in beeld (bijv. een breed shot), dan komen ze boven elkaar te staan met de ondertitels in het midden. Close-ups blijven het gezicht volgen.")}
+    ${vink("popup_tekst", "Pop-up tekst", "Een sterk getal of woord (\"$3 BILLION\", \"90%\") popt even groot in beeld. Claude kiest het moment; anders pakt Clip-OS zelf een bedrag of percentage.")}
+    ${vink("geluidseffecten", "Geluidseffecten", "Zachte whoosh bij camerawissels en zooms, een lage boem bij een pop-up. Zelfgemaakt, dus geen rechtenproblemen.")}
     <div class="tip">Opslaan met de knop hierboven. Geldt voor nieuwe video's; bestaande video's pas je aan met ‘Opnieuw maken’.</div>
   </div>`;
 }
@@ -650,6 +654,8 @@ function paginaInstellingen() {
         <label class="veld">Max. ideeën per bronvideo<input class="invoer" type="number" min="1" max="12" id="s-ideeen" value="${esc(c.max_ideeen_per_bron)}"></label>
         <label class="veld">Spraakmodel (sneller ↔ nauwkeuriger)<select class="invoer" id="s-model">${(c.whisper_modellen || []).map(m => `<option ${m === c.whisper_model ? "selected" : ""}>${esc(m)}</option>`).join("")}</select></label>
       </div>
+      <label class="rij" style="gap:10px;align-items:flex-start"><span class="schakelaar" style="margin-top:2px"><input type="checkbox" id="s-snel" ${c.snel_uitschrijven !== false ? "checked" : ""}><span></span></span>
+        <span><b>Snel uitschrijven</b><div class="zacht klein">Meerdere stukken tegelijk: ongeveer 3x sneller. Zet uit als de ondertitels vaker fouten bevatten.</div></span></label>
       <div class="rij"><button class="knop primair" data-actie="config-opslaan">${icoon("check")}Opslaan</button><span class="tip">Tip: "medium" is nauwkeuriger voor Nederlands, maar trager.</span></div>
       ${montageKaart()}
       ${opslagKaart()}
@@ -896,6 +902,7 @@ const ACTIES = {
     const montage = {
       stiltes_eruit: $("#m-stiltes_eruit")?.checked ?? true, zoom: $("#m-zoom")?.checked ?? true,
       split_screen: $("#m-split_screen")?.checked ?? true, max_stilte: $("#m-max_stilte")?.value ?? 0.4,
+      popup_tekst: $("#m-popup_tekst")?.checked ?? true, geluidseffecten: $("#m-geluidseffecten")?.checked ?? true,
     };
     const opslagCfg = {
       automatisch: $("#o-automatisch")?.checked ?? true,
@@ -903,6 +910,7 @@ const ACTIES = {
     };
     S.config = (await api.post("/api/config", {
       talen, max_ideeen_per_bron: $("#s-ideeen").value, whisper_model: $("#s-model").value, montage, opslag: opslagCfg,
+      snel_uitschrijven: $("#s-snel")?.checked ?? true,
     })).config;
     await laadConfig();
     S.vuil = false;

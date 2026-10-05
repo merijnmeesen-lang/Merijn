@@ -1,5 +1,5 @@
 # Alles gratis en open source. Geen betaalde AI-SDK's (de kostenwacht blokkeert die).
-faster-whisper>=1.0      # spraak → tekst, lokaal
+faster-whisper>=1.1      # spraak → tekst, lokaal (1.1+: snel/batched uitschrijven)
 yt-dlp                   # video's downloaden
 opencv-python-headless>=4.8,<5   # gezichtsvolging (v5 heeft de ingebouwde gezichtsdetector niet meer)
 imageio-ffmpeg>=0.5      # levert een gratis ffmpeg mee (geen aparte installatie nodig)

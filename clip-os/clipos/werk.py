@@ -27,7 +27,8 @@ def standaardbestanden() -> None:
             shutil.copy2(ROOT / voorbeeld, ROOT / eigen)
 
 
-MONTAGE_STANDAARD = {"stiltes_eruit": True, "max_stilte": 0.4, "zoom": True, "split_screen": True}
+MONTAGE_STANDAARD = {"stiltes_eruit": True, "max_stilte": 0.4, "zoom": True, "split_screen": True,
+                     "geluidseffecten": True, "popup_tekst": True}
 
 
 def montage_instellingen() -> dict:

@@ -1,7 +1,7 @@
 """Trendonderzoek (uitvoerend deel): recente podcasts/interviews op YouTube vinden die snel stijgen.
 
-Gratis: gebruikt alleen yt-dlp. Het bedenken van de zoekonderwerpen gebeurt door de
-agent clip-trendonderzoeker (Claude, via het Pro-abonnement).
+Gratis: gebruikt alleen yt-dlp. Het bedenken van de zoekonderwerpen gebeurt door
+het commando /trends (Claude, via het Pro-abonnement).
 """
 
 from __future__ import annotations
@@ -90,17 +90,27 @@ def valideer_rapport(r: dict) -> list[str]:
 
 # ---------- YouTube (yt-dlp) ----------
 
-def _details(urls: list[str]) -> list[dict]:
+PARALLEL = 6  # zoveel video's tegelijk opvragen (elke opvraag wacht vooral op YouTube, niet op je computer)
+
+
+def _detail(url: str) -> dict | None:
     import yt_dlp
 
-    uit = []
-    with yt_dlp.YoutubeDL(werk.ytdlp_opties(skip_download=True)) as ydl:
-        for url in urls:
-            try:
-                uit.append(normaliseer(ydl.extract_info(url, download=False)))
-            except Exception as e:  # één kapotte video mag de rest niet tegenhouden
-                print(f"⚠️  overgeslagen: {url} ({e})")
-    return uit
+    try:
+        with yt_dlp.YoutubeDL(werk.ytdlp_opties(skip_download=True)) as ydl:
+            return normaliseer(ydl.extract_info(url, download=False))
+    except Exception as e:  # één kapotte video mag de rest niet tegenhouden
+        print(f"⚠️  overgeslagen: {url} ({e})")
+        return None
+
+
+def _details(urls: list[str]) -> list[dict]:
+    """Details van meerdere video's tegelijk ophalen (veel sneller dan één voor één)."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    urls = list(dict.fromkeys(urls))
+    with ThreadPoolExecutor(max_workers=PARALLEL) as pool:
+        return [d for d in pool.map(_detail, urls) if d]
 
 
 def _plat(url: str, aantal: int) -> list[dict]:
@@ -121,6 +131,36 @@ def zoek(query: str, periode: str = "week", maximum: int = 8, min_minuten: int =
     kandidaten = [e for e in _plat(zoek_url, 40) if (e.get("duration") or 0) >= min_minuten * 60]
     kandidaten.sort(key=lambda e: -(e.get("view_count") or 0))
     return _details([_url(e) for e in kandidaten[:maximum]])
+
+
+def zoek_meerdere(zoektermen: list[str], periode: str = "week", maximum: int = 8, min_minuten: int = 10,
+                  kanalen: list[str] | None = None) -> list[dict]:
+    """Meerdere zoektermen en kanalen tegelijk: alle zoekopdrachten parallel, daarna alle details parallel."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def kandidaten_zoek(q: str) -> list[dict]:
+        zoek_url = f"https://www.youtube.com/results?search_query={quote_plus(q)}&sp={PERIODE[periode]}"
+        try:
+            lijst = [e for e in _plat(zoek_url, 40) if (e.get("duration") or 0) >= min_minuten * 60]
+        except Exception as e:
+            print(f"⚠️  zoeken mislukt: {q} ({e})")
+            return []
+        return sorted(lijst, key=lambda e: -(e.get("view_count") or 0))[:maximum]
+
+    def kandidaten_kanaal(url: str) -> list[dict]:
+        lijst = url.rstrip("/")
+        if "youtube.com/@" in lijst and not lijst.endswith(("/videos", "/streams")):
+            lijst += "/videos"
+        try:
+            return [e for e in _plat(lijst, 20) if (e.get("duration") or 0) >= min_minuten * 60][:maximum]
+        except Exception as e:
+            print(f"⚠️  kanaal niet te lezen: {url} ({e})")
+            return []
+
+    taken = [(kandidaten_zoek, q) for q in zoektermen] + [(kandidaten_kanaal, k) for k in kanalen or []]
+    with ThreadPoolExecutor(max_workers=PARALLEL) as pool:
+        groepen = list(pool.map(lambda t: t[0](t[1]), taken))
+    return _details([_url(e) for groep in groepen for e in groep])
 
 
 def kanaal(url: str, maximum: int = 8, min_minuten: int = 10) -> list[dict]:

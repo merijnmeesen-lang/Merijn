@@ -23,6 +23,7 @@ from . import inbox, kostenwacht, werk
 
 MAP = werk.DATA / "claude"
 MAX_STAPPEN = "80"
+MODEL = "sonnet"  # snel en ruim voldoende voor ideeën en marktonderzoek; spaart je Pro-limiet
 _wachtrij: "queue.Queue[str]" = queue.Queue()
 _huidig: dict = {"id": None, "proc": None}
 _slot = threading.Lock()
@@ -273,7 +274,7 @@ def _voer_uit(tid: str) -> None:
             zet(tid, status="gestopt" if gestopt else "fout", klaar=inbox.nu(), fout=None if gestopt else str(e))
             return
         cmd = [pad, "-p", prompt_voor(taak["soort"], data), "--output-format", "stream-json", "--verbose",
-               "--permission-mode", "acceptEdits", "--max-turns", MAX_STAPPEN]
+               "--permission-mode", "acceptEdits", "--max-turns", MAX_STAPPEN, "--model", MODEL]
         f.write(f"🧠 Claude aan het werk (Pro-login, max {MAX_STAPPEN} stappen)\n")
         f.flush()
         proc = subprocess.Popen(cmd, cwd=werk.ROOT, env=schone_omgeving(), stdin=subprocess.DEVNULL,

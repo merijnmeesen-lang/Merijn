@@ -17,18 +17,20 @@ in gewoon Nederlands uit en geef stap-voor-stap instructies.
 - `clipos/dashboard.py` + `clipos/web/` (index.html, app.css, app.js): de Clip-OS-webapp op
   http://127.0.0.1:8765 (start.bat). Geen build-stap; gewone HTML/CSS/JS.
 - `clipos/claude_taken.py`: start Claude-taken vanuit de webapp (`claude -p`, Pro-login, max 80 stappen).
-- `.claude/agents/`: de agents (hookjager, copywriter, controleur, analist, scout).
+- `.claude/agents/`: de agents (hookjager (ook titels/hashtags), controleur, analist, scout).
   `.claude/commands/`: /video, /dagelijks, /campagne.
 - `config.json` en `lessenboek.md` zijn persoonlijk en staan niet in git (ze worden aangemaakt uit `config.voorbeeld.json`
   en `lessenboek.voorbeeld.md`). Nieuwe config-opties altijd met een standaardwaarde lezen (`.get`), want
   bestaande installaties hebben ze nog niet. `briefs/` (campagnes), `branding/`.
-- Montage: `clipos/tempo.py` (stiltes/uhm's eruit, zooms), `clipos/reframe.py` (gezicht volgen met YuNet-model in
-  `clipos/modellen/`, split-screen bij twee sprekers), `clipos/render.py`. Aan/uit via `montage` in config.json.
+- Montage: `clipos/tempo.py` (stiltes/uhm's eruit, zooms), `clipos/reframe.py` (één decodeer-ronde: camerawissels +
+  gezichten met YuNet-model in `clipos/modellen/`; indeling per shot: volgen / split-screen / wazige balken),
+  `clipos/effecten.py` (zelfgemaakte geluidseffecten, pop-up tekst), `clipos/render.py`. Aan/uit via `montage` in config.json.
 - `clipos/opslag.py`: opruimen (geplaatste video's na `geplaatst_dagen`, bronvideo's na `bron_dagen`; instelbaar via
   `opslag` in config.json). Alleen binnen jobs/, output/ en data/claude/. Een opgeruimde bron haalt
   `productie.zorg_voor_bron` vanzelf opnieuw binnen. Ideeën, views, trends en lessenboek nooit verwijderen.
 - `clipos/views.py`: views/likes van geplaatste video's ophalen via de link (yt-dlp, alleen lezen).
-- `clipos/trends.py` + agent `clip-trendonderzoeker` + `/trends`: marktonderzoek (pagina Trends).
+- `clipos/trends.py` + `/trends` (Claude doet het onderzoek zelf, zonder subagent): marktonderzoek (pagina Trends).
+  `python -m clipos trends "q1" "q2" --kanaal <url>` zoekt alles parallel.
 - Updates: `update.bat` (git pull). Eenmalige overstap vanaf de zip-versie: `overzetten.bat`.
 - Werkdata (niet in git): `jobs/`, `output/`, `data/`.
 - yt-dlp altijd via `werk.ytdlp_opties(...)` aanroepen (systeemcertificaten; nodig bij antivirus zoals Norton).
