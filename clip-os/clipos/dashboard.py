@@ -143,6 +143,21 @@ def valideer_config(nieuw: dict) -> dict:
     return cfg
 
 
+def gepland_moment(waarde) -> str | None:
+    """Datum en tijd waarop de video in YouTube is ingepland (zoals een datum-tijdveld het geeft), of None."""
+    from datetime import datetime, timedelta
+
+    if not waarde:
+        return None
+    try:
+        moment = datetime.fromisoformat(str(waarde).strip()[:19])
+    except ValueError:
+        raise ValueError("Kies een geldige datum en tijd voor het inplannen")
+    if not datetime.now() - timedelta(days=1) <= moment <= datetime.now() + timedelta(days=180):
+        raise ValueError("Het geplande moment moet binnen de komende 6 maanden liggen")
+    return moment.isoformat(timespec="seconds")
+
+
 def kostenwacht_status() -> dict:
     return {
         "sleutels": kostenwacht.controleer_sleutels(),
@@ -210,6 +225,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(opslag.overzicht())
         if pad == "/api/jobs/open":
             return self._json(productie.open_jobs())
+        if pad == "/api/bronnen":
+            return self._json(productie.bronnen())
         if pad == "/api/views/staat":
             return self._json(views.STAAT)
         if pad == "/api/systeem":
@@ -230,6 +247,8 @@ class Handler(BaseHTTPRequestHandler):
             v = inbox.lees(vid)
             pad = (werk.ROOT / v["map"] / "video.mp4").resolve()
             pad.relative_to(werk.OUTPUT.resolve())
+            if not pad.is_file():
+                raise FileNotFoundError(pad)
         except Exception:
             return self._json({"fout": "video niet gevonden"}, 404)
         grootte = pad.stat().st_size
@@ -295,6 +314,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True, "brief": brief})
         if pad == "/api/views/ophalen":
             return self._json({"ok": True, "staat": views.start()})
+        if m := re.fullmatch(r"/api/bron/verwijderen/([\w.\-]{1,160})", pad):
+            return self._json({"ok": True, **opslag.verwijder_bron(m.group(1), str(body.get("reden", "")))})
         if pad == "/api/opslag/opruimen":
             return self._json({"ok": True, "uitslag": opslag.ruim_op(), "opslag": opslag.overzicht()})
         if pad == "/api/systeem/bijwerken":
@@ -303,7 +324,7 @@ class Handler(BaseHTTPRequestHandler):
             cfg = valideer_config(body)
             werk.schrijf_json(werk.ROOT / "config.json", cfg)
             return self._json({"ok": True, "config": cfg})
-        if m := re.fullmatch(r"/api/(akkoord|afwijzen|geplaatst|views|opnieuw|terug|link)/([^/]+)", pad):
+        if m := re.fullmatch(r"/api/(akkoord|afwijzen|geplaatst|views|opnieuw|terug|link|verwijder)/([^/]+)", pad):
             return self._voorstel(m.group(1), m.group(2), body)
         return self._json({"fout": "onbekende actie"}, 404)
 
@@ -329,7 +350,9 @@ class Handler(BaseHTTPRequestHandler):
             link = str(body.get("link", "")).strip()[:500]
             if link and not views.geldige_link(link):
                 raise ValueError("Dat lijkt geen link van een YouTube Short of TikTok. Laat het leeg of plak de juiste link.")
-            inbox.zet(vid, status="geplaatst", link=link, geplaatst_op=inbox.nu())
+            inbox.zet(vid, status="geplaatst", link=link, geplaatst_op=inbox.nu(), gepland_op=gepland_moment(body.get("gepland_op")))
+        elif actie == "verwijder" and v["status"] in ("klaar", "fout"):
+            opslag.verwijder_video(vid, str(body.get("reden", "")))
         elif actie == "views" and v["status"] == "geplaatst":
             try:
                 aantal = int(str(body.get("views", "")).replace(".", "").replace(",", "").strip())

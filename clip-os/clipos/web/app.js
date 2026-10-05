@@ -15,7 +15,7 @@ function opslag(k, v) {
 
 const S = {
   staat: null, briefs: [], config: null, kw: null, les: "",
-  taal: opslag("taal") || "alle", afwijs: null, trends: null, trendTaal: opslag("trendtaal") || "beide", bewerk: null, open: new Set(), concept: {}, vuil: false,
+  taal: opslag("taal") || "alle", afwijs: null, bevestig: null, bronnen: [], trends: null, trendTaal: opslag("trendtaal") || "beide", bewerk: null, open: new Set(), concept: {}, vuil: false,
   laatsteHtml: "", offline: false, vorigeTaken: {},
 };
 
@@ -229,6 +229,44 @@ function paginaVandaag() {
   </div>`;
 }
 
+function bevestigPaneel({ sleutel, vraag, uitleg, redenen, knop, actie, data }) {
+  const k = esc(sleutel), attrs = Object.entries(data).map(([a, w]) => `data-${a}="${esc(w)}"`).join(" ");
+  return `<div class="afwijs-paneel">
+    <div class="klein"><b>${esc(vraag)}</b> <span class="zacht">${esc(uitleg)}</span></div>
+    <div class="redenen">${redenen.map(r => `<button class="knop zacht klein" data-actie="reden-kies" data-sleutel="${k}" data-reden="${esc(r)}">${esc(r)}</button>`).join("")}</div>
+    <input class="invoer" id="rd-${k}" data-concept="rd-${k}" maxlength="300" placeholder="Of typ zelf een reden (mag ook leeg)" value="${esc(cv("rd-" + sleutel))}">
+    <div class="acties">
+      <button class="knop gevaar breed" data-actie="${esc(actie)}" ${attrs}>${icoon("x")}${esc(knop)}</button>
+      <button class="knop zacht" data-actie="bevestig-annuleer">Terug</button>
+    </div>
+  </div>`;
+}
+
+const PLAN_UREN = [12, 17, 20];  // voorgestelde momenten om te plaatsen (eigen tijd); max 3 per dag per taal
+const tweeCijfers = n => String(n).padStart(2, "0");
+const lokaleTijd = t => `${t.getFullYear()}-${tweeCijfers(t.getMonth() + 1)}-${tweeCijfers(t.getDate())}T${tweeCijfers(t.getHours())}:${tweeCijfers(t.getMinutes())}`;
+
+function volgendeMomenten(lijst) {
+  /* Per video het eerstvolgende vrije moment (12:00, 17:00 of 20:00) dat nog niet bezet is door een ingeplande video in dezelfde taal. */
+  const bezet = new Set((S.staat.voorstellen || []).filter(v => v.gepland_op).map(v => `${v.taal}|${v.gepland_op.slice(0, 13)}`));
+  const vanaf = new Date(Date.now() + 30 * 60000), uit = {};
+  for (const v of lijst) {
+    zoek: for (let d = 0; d < 60; d++) {
+      for (const u of PLAN_UREN) {
+        const t = new Date(); t.setDate(t.getDate() + d); t.setHours(u, 0, 0, 0);
+        const k = `${v.taal}|${lokaleTijd(t).slice(0, 13)}`;
+        if (t >= vanaf && !bezet.has(k)) { bezet.add(k); uit[v.id] = lokaleTijd(t); break zoek; }
+      }
+    }
+  }
+  return uit;
+}
+
+function datumTijd(iso) {
+  const t = new Date(iso);
+  return isNaN(t) ? iso : t.toLocaleString("nl-NL", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
 const AFWIJS_REDENEN = ["Saai onderwerp", "Hook te vaag", "Te lang", "Past niet bij mijn kanaal", "Al eerder gedaan", "Slecht moment in de video"];
 
 function afwijsPaneel(v) {
@@ -246,7 +284,7 @@ function afwijsPaneel(v) {
 
 function paginaIdeeen() {
   const lijst = zichtbaar().filter(v => v.status === "idee").sort((a, b) => (b.score || 0) - (a.score || 0));
-  const afgewezen = zichtbaar().filter(v => v.status === "afgewezen");
+  const afgewezen = zichtbaar().filter(v => v.status === "afgewezen" && !v.bron_afgekeurd);
   const kaarten = lijst.map(v => {
     const score = Number(v.score) || 0;
     return `<article class="kaart idee" data-kaart="${esc(v.id)}">
@@ -272,7 +310,30 @@ function paginaIdeeen() {
       : leeg("💡", "Geen nieuwe ideeën", "Laat Claude een video uitwerken of start de dagelijkse run.", `<a class="knop primair" href="#/vandaag">${icoon("sparkle")}Nieuwe video</a>`)}
     ${afgewezen.length ? `<div class="sectie"><h2>Afgewezen</h2><span>${afgewezen.length} · Claude leert hiervan</span></div>
       <div class="kaart"><div class="feed">${afgewezen.slice(-15).reverse().map(v => `<div><span>${taalBadge(v.taal)} ${esc(v.hook)}${v.afwijsreden ? ` <span class="zacht klein">· ${esc(v.afwijsreden)}</span>` : ""}</span>
-        <button class="knop zacht klein" data-actie="terug" data-id="${esc(v.id)}" style="margin-left:auto">Terugzetten</button></div>`).join("")}</div></div>` : ""}`;
+        <button class="knop zacht klein" data-actie="terug" data-id="${esc(v.id)}" style="margin-left:auto">Terugzetten</button></div>`).join("")}</div></div>` : ""}
+    ${bronnenLijst()}`;
+}
+
+const BRON_REDENEN = ["Saai gesprek", "Slechte beeld- of geluidskwaliteit", "Past niet bij mijn kanaal", "Verkeerde taal", "Te weinig sterke momenten"];
+
+function bronRij(b) {
+  const vraag = S.bevestig === "bron:" + b.job;
+  const telling = [b.ideeen && `${b.ideeen} idee${b.ideeen > 1 ? "ën" : ""} open`, b.klaar && `${b.klaar} klaar`, b.geplaatst && `${b.geplaatst} geplaatst`].filter(Boolean).join(" · ");
+  return `<div class="bron-rij">
+    <div class="rij" style="gap:8px">${b.taal ? taalBadge(b.taal) : ""}<b>${esc(b.titel)}</b>
+      <span class="flauw klein">${esc(b.kanaal || "")}${b.kanaal ? " · " : ""}${esc(relTijd(b.gemaakt))} · ${grootte(b.grootte)}${telling ? " · " + esc(telling) : ""}</span>
+      ${vraag ? "" : `<button class="knop gevaar klein" style="margin-left:auto" data-actie="bron-vraag" data-job="${esc(b.job)}" ${b.bezig ? "disabled title=\"Er wordt nu een video van gemaakt\"" : ""}>${icoon("x")}Verwijderen</button>`}</div>
+    ${vraag ? bevestigPaneel({ sleutel: "bron:" + b.job, vraag: "Deze bronvideo verwijderen?",
+      uitleg: `De podcast en ${b.ideeen ? "de " + b.ideeen + " open ideeën" : "de clips"} gaan weg. Video's die al klaar of geplaatst zijn blijven staan.`,
+      redenen: BRON_REDENEN, knop: "Bronvideo verwijderen", actie: "bron-verwijder", data: { job: b.job } }) : ""}
+  </div>`;
+}
+
+function bronnenLijst() {
+  const lijst = S.bronnen || [];
+  if (!lijst.length) return "";
+  return `<div class="sectie"><h2>Bronvideo's</h2><span>gedownloade podcasts · verwijder wat je niet goed vindt</span></div>
+    <div class="kaart"><div class="stapel" style="gap:0">${lijst.map(bronRij).join("")}</div></div>`;
 }
 
 const ytId = url => (String(url).match(/(?:v=|youtu\.be\/)([\w-]{6,})/) || [])[1];
@@ -351,9 +412,11 @@ function paginaPlaatsen() {
   const lijst = zichtbaar().filter(v => v.status === "klaar");
   if (!lijst.length) return leeg("📤", "Niets om te plaatsen", "Zodra een video klaar is, staat hij hier met titel, beschrijving en checklist.");
   const accounts = S.staat.accounts || {};
+  const voorstel = volgendeMomenten(lijst);
   return `<div class="stapel">${lijst.map(v => {
     const id = esc(v.id);
     const fouten = (v.controle || []).filter(c => !c[0]);
+    const vraag = S.bevestig === "video:" + v.id;
     return `<article class="kaart plaats" data-kaart="${id}">
       <div class="video-9x16"><video controls preload="metadata" src="/video/${encodeURIComponent(v.id)}"></video></div>
       <div class="stapel">
@@ -372,12 +435,22 @@ function paginaPlaatsen() {
           <li><input type="checkbox" data-bewaar="c1-${id}" ${opslag("c1-" + v.id) ? "checked" : ""}><span>Upload als Short (YouTube-app of Studio → Maken → Short)</span></li>
           <li><input type="checkbox" data-bewaar="c2-${id}" ${opslag("c2-" + v.id) ? "checked" : ""}><span>Synthetische content: <b>Nee</b> (echte beelden, alleen ondertitels toegevoegd)</span></li>
           <li><input type="checkbox" data-bewaar="c3-${id}" ${opslag("c3-" + v.id) ? "checked" : ""}><span>Link indienen bij de campagne (als die er is)</span></li>
+          <li><input type="checkbox" data-bewaar="c4-${id}" ${opslag("c4-" + v.id) ? "checked" : ""}><span>Inplannen? In YouTube bij <b>Zichtbaarheid → Plannen</b> hetzelfde moment kiezen als hieronder</span></li>
         </ul>
-        <div class="rij"><input class="invoer" style="flex:1;min-width:200px" data-concept="link-${id}" id="l-${id}" placeholder="Link na plaatsen (optioneel)" value="${esc(cv("link-" + v.id))}">
-          <button class="knop ok" data-actie="geplaatst" data-id="${id}">${icoon("check")}Geplaatst</button></div>
-        <div class="rij"><a class="knop zacht klein" href="/video/${encodeURIComponent(v.id)}?download=1">${icoon("download")}Download mp4</a>
+        <input class="invoer" data-concept="link-${id}" id="l-${id}" placeholder="Link van je Short (staat in YouTube Studio bij het uploaden)" value="${esc(cv("link-" + v.id))}">
+        <div class="plaats-knoppen">
+          <button class="knop ok" data-actie="geplaatst" data-id="${id}">${icoon("check")}Geplaatst (nu live)</button>
+          <span class="zacht klein">of</span>
+          <input class="invoer" type="datetime-local" id="gp-${id}" data-concept="gp-${id}" value="${esc(cv("gp-" + v.id, voorstel[v.id] || ""))}" title="Moment waarop de video live gaat">
+          <button class="knop zacht" data-actie="ingepland" data-id="${id}">📅 Ingepland</button>
+        </div>
+        ${vraag ? bevestigPaneel({ sleutel: "video:" + v.id, vraag: "Deze video verwijderen?", uitleg: "Het idee komt bij Afgewezen; met Terugzetten kun je hem later opnieuw laten maken.",
+          redenen: ["Video niet goed gelukt", "Saai fragment", "Hook niet goed", "Beeld klopt niet", "Al genoeg over dit onderwerp"],
+          knop: "Video verwijderen", actie: "video-verwijder", data: { id: v.id } })
+        : `<div class="rij"><a class="knop zacht klein" href="/video/${encodeURIComponent(v.id)}?download=1">${icoon("download")}Download mp4</a>
           <button class="knop zacht klein" data-actie="opnieuw" data-id="${id}">${icoon("refresh")}Opnieuw maken</button>
-          <span class="flauw klein">${esc(v.map)}</span></div>
+          <button class="knop gevaar klein" data-actie="video-vraag" data-id="${id}">${icoon("x")}Verwijderen</button>
+          <span class="flauw klein">${esc(v.map)}</span></div>`}
       </div>
     </article>`;
   }).join("")}</div>`;
@@ -397,6 +470,8 @@ function grafiek(lijst) {
     }).join("")}</svg>`;
 }
 
+const nogNietLive = v => v.gepland_op && new Date(v.gepland_op) > new Date();
+
 function paginaResultaten() {
   const lijst = zichtbaar().filter(v => v.status === "geplaatst");
   if (!lijst.length) return leeg("📈", "Nog niets geplaatst", "Klik bij Plaatsen op ‘Geplaatst’ en plak de link van je Short. Clip-OS haalt de views daarna zelf op.");
@@ -415,8 +490,8 @@ function paginaResultaten() {
       <td>${v.link ? `<a href="${esc(v.link)}" target="_blank" rel="noopener">${esc(v.titel)}</a>` : esc(v.titel)}<div class="flauw klein">${esc(v.hook)}</div>
         ${v.link ? "" : `<div class="rij" style="gap:6px;margin-top:6px"><input class="invoer" style="flex:1;min-width:180px;padding:6px 9px" id="lk-${id}" data-concept="lk-${id}" placeholder="Plak de link van je Short of TikTok" value="${esc(cv("lk-" + v.id))}">
           <button class="knop zacht klein" data-actie="link" data-id="${id}">Opslaan</button></div>`}</td>
-      <td>${taalBadge(v.taal)}</td><td class="flauw">${esc(relTijd(v.geplaatst_op))}</td>
-      <td class="num">${v.views_auto
+      <td>${taalBadge(v.taal)}</td><td class="flauw">${nogNietLive(v) ? `<span class="badge">📅 ${esc(datumTijd(v.gepland_op))}</span>` : esc(relTijd(v.gepland_op || v.geplaatst_op))}</td>
+      <td class="num">${nogNietLive(v) ? `<span class="flauw klein">nog niet live</span>` : v.views_auto
         ? `<b>${getal(v.views)}</b>${g !== null ? `<div class="klein" style="color:var(--ok)">${g >= 0 ? "+" : ""}${getal(g)} sinds vorige meting</div>` : ""}${v.likes ? `<div class="flauw klein">👍 ${getal(v.likes)}</div>` : ""}`
         : `<div class="views-invoer"><input class="invoer" inputmode="numeric" id="v-${id}" data-concept="views-${id}" value="${esc(cv("views-" + v.id, v.views ?? ""))}" placeholder="views">
           <button class="knop zacht klein" data-actie="views" data-id="${id}">Opslaan</button></div>`}</td></tr>`;
@@ -542,7 +617,8 @@ function paginaClaude() {
     ${(S.openJobs || []).length ? `<div class="sectie"><h2>Onafgemaakte video's</h2><span>gedownload, maar nog geen ideeën</span></div>
       <div class="kaart"><div class="feed">${S.openJobs.map(j => `<div><span><b>${esc(j.titel)}</b>
         <span class="flauw klein"> · ${j.uitgeschreven ? "uitgeschreven ✓" : j.gedownload ? "gedownload, nog niet uitgeschreven" : "nog niet gedownload"}</span></span>
-        ${j.gedownload ? `<button class="knop zacht klein" style="margin-left:auto" data-actie="afmaken" data-job="${esc(j.job)}" ${taken.some(t => ["wacht", "bezig"].includes(t.status) && t.data && t.data.job === j.job) ? "disabled" : ""}>${icoon("play")}Afmaken</button>` : ""}</div>`).join("")}</div></div>` : ""}
+        ${j.gedownload ? `<button class="knop zacht klein" style="margin-left:auto" data-actie="afmaken" data-job="${esc(j.job)}" ${taken.some(t => ["wacht", "bezig"].includes(t.status) && t.data && t.data.job === j.job) ? "disabled" : ""}>${icoon("play")}Afmaken</button>` : ""}
+        <button class="knop gevaar klein" ${j.gedownload ? "" : `style="margin-left:auto"`} data-actie="bron-weg" data-job="${esc(j.job)}" title="Deze video niet afmaken en verwijderen" ${taken.some(t => ["wacht", "bezig"].includes(t.status) && t.data && t.data.job === j.job) ? "disabled" : ""}>${icoon("x")}</button></div>`).join("")}</div></div>` : ""}
     <div class="sectie"><h2>Taken</h2><span>live logboek</span></div>
     ${taken.length ? `<div class="stapel">${taken.map(t => {
       const toon = t.status === "bezig" || S.open.has(t.id);
@@ -704,6 +780,7 @@ async function laadKw() { S.kw = await api.get("/api/kostenwacht"); }
 async function laadSysteem() { S.systeem = await api.get("/api/systeem"); }
 async function laadOpslag() { S.opslag = await api.get("/api/opslag"); }
 async function laadOpen() { S.openJobs = await api.get("/api/jobs/open"); }
+async function laadBronnen() { S.bronnen = await api.get("/api/bronnen"); }
 async function laadViewsStaat() { S.viewsStaat = await api.get("/api/views/staat"); }
 async function laadTrends() { S.trends = (await api.get("/api/trends")).rapport; }
 async function laadLes() { S.les = (await api.get("/api/lessenboek")).tekst; }
@@ -743,6 +820,7 @@ async function naarPagina() {
     if (p === "resultaten") await laadViewsStaat();
     if (p === "campagnes" || p === "vandaag" || p === "claude") await laadBriefs();
     if (p === "claude") await Promise.all([laadKw(), laadOpen()]);
+    if (p === "ideeen") await laadBronnen();
   } catch (e) { toast(e.message, "fout"); }
   renderZijbalk(); renderTopbalk(); renderPagina(true);
   window.scrollTo(0, 0);
@@ -888,6 +966,38 @@ const ACTIES = {
     await api.post(`/api/link/${encodeURIComponent(id)}`, { link: document.getElementById("lk-" + id)?.value || "" });
     vergeet("lk-" + id);
     toast("Link opgeslagen. Klik op ‘Views ophalen’.");
+  },
+  "video-vraag"(el) { S.bevestig = "video:" + el.dataset.id; renderPagina(true); },
+  "bron-vraag"(el) { S.bevestig = "bron:" + el.dataset.job; renderPagina(true); },
+  "bevestig-annuleer"() { S.bevestig = null; renderPagina(true); },
+  "reden-kies"(el) { S.concept["rd-" + el.dataset.sleutel] = el.dataset.reden; renderPagina(true); },
+  async "video-verwijder"(el) {
+    const id = el.dataset.id, sleutel = "video:" + id;
+    await api.post(`/api/verwijder/${encodeURIComponent(id)}`, { reden: (document.getElementById("rd-" + sleutel)?.value || "").trim() });
+    S.bevestig = null; vergeet("rd-" + sleutel);
+    toast("🗑️ Video verwijderd. Hij staat bij Ideeën → Afgewezen als je hem toch wilt.");
+  },
+  async "bron-verwijder"(el) {
+    const job = el.dataset.job, sleutel = "bron:" + job;
+    const r = await api.post(`/api/bron/verwijderen/${encodeURIComponent(job)}`, { reden: (document.getElementById("rd-" + sleutel)?.value || "").trim() });
+    S.bevestig = null; vergeet("rd-" + sleutel);
+    await Promise.all([laadBronnen(), laadOpen()]);
+    toast(`🗑️ Bronvideo verwijderd · ${grootte(r.vrijgemaakt)} vrijgemaakt${r.ideeen ? ` · ${r.ideeen} ideeën afgewezen` : ""}`);
+    renderPagina(true);
+  },
+  async "bron-weg"(el) {
+    if (!confirm("Deze video niet afmaken en de download verwijderen?")) return;
+    const r = await api.post(`/api/bron/verwijderen/${encodeURIComponent(el.dataset.job)}`, { reden: "Niet afgemaakt" });
+    await laadOpen();
+    toast(`🗑️ Verwijderd · ${grootte(r.vrijgemaakt)} vrijgemaakt`);
+    renderPagina(true);
+  },
+  async ingepland(el) {
+    const id = el.dataset.id, moment = document.getElementById("gp-" + id)?.value || "";
+    if (!moment) throw new Error("Kies eerst de datum en tijd waarop de video live gaat");
+    await api.post(`/api/geplaatst/${encodeURIComponent(id)}`, { link: document.getElementById("l-" + id)?.value || "", gepland_op: moment });
+    vergeet("link-" + id, "gp-" + id);
+    toast(`📅 Ingepland voor ${datumTijd(moment)}. Views komen binnen zodra hij live is.`);
   },
   async opruimen() {
     const r = await api.post("/api/opslag/opruimen");

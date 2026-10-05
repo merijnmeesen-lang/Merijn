@@ -153,3 +153,56 @@ def test_link_en_views_achteraf(omgeving):
     assert h("link", "t1", {"link": "https://youtu.be/abcDEF12345"})[0] == 200
     assert h("views", "t1", {"views": "1.234"})[0] == 200
     assert inbox.lees("t1")["views"] == 1234
+
+
+# ---------- met de hand verwijderen en inplannen ----------
+
+def test_video_verwijderen_bij_plaatsen(omgeving):
+    d = maak_job(omgeving, "j", 1)
+    vid, map_ = maak_voorstel(omgeving, "j", "klaar")
+    code, _ = _NepHandler()("verwijder", vid, {"reden": "Hook niet goed"})
+    v = inbox.lees(vid)
+    assert code == 200 and v["status"] == "afgewezen" and v["afwijsreden"] == "Video verwijderd: Hook niet goed"
+    assert not map_.exists() and not (d / "clips" / "c1" / "video.mp4").exists() and (d / "bron.mp4").exists()
+    assert _NepHandler()("terug", vid, {})[0] == 200 and inbox.lees(vid)["status"] == "idee"
+
+
+def test_bron_verwijderen(omgeving):
+    d = maak_job(omgeving, "slecht", 1)
+    inbox.voeg_toe({"id": "slecht__a", "job": "slecht", "clip_id": "a"})
+    vid_klaar, map_ = maak_voorstel(omgeving, "slecht", "klaar")
+    assert [b["job"] for b in productie.bronnen()] == ["slecht"]
+    uit = opslag.verwijder_bron("slecht", "Saai gesprek")
+    assert uit["ideeen"] == 1 and uit["vrijgemaakt"] >= 1000
+    assert not (d / "bron.mp4").exists() and not (d / "clips").exists()
+    assert (d / "job.json").exists() and (d / "transcript.json").exists() and (d / "afgekeurd").exists()
+    a = inbox.lees("slecht__a")
+    assert a["status"] == "afgewezen" and a["bron_afgekeurd"] and a["afwijsreden"] == "Bron afgekeurd: Saai gesprek"
+    assert inbox.lees(vid_klaar)["status"] == "klaar" and (map_ / "video.mp4").exists()   # klare video blijft
+    assert productie.bronnen() == [] and productie.open_jobs() == [] and productie.te_doen() == []
+
+
+def test_bron_niet_verwijderen_terwijl_er_een_video_van_gemaakt_wordt(omgeving):
+    maak_job(omgeving, "bezig", 1)
+    maak_voorstel(omgeving, "bezig", "bezig")
+    with pytest.raises(ValueError):
+        opslag.verwijder_bron("bezig")
+    with pytest.raises(ValueError):
+        opslag.verwijder_bron("../data")
+
+
+def test_inplannen(omgeving):
+    from clipos import views
+    maak_job(omgeving, "p", 1)
+    vid, _ = maak_voorstel(omgeving, "p", "klaar")
+    morgen = (datetime.now() + timedelta(days=1)).replace(microsecond=0)
+    code, _ = _NepHandler()("geplaatst", vid, {"link": "https://youtube.com/shorts/abcDEF12345",
+                                               "gepland_op": morgen.strftime("%Y-%m-%dT%H:%M")})
+    v = inbox.lees(vid)
+    assert code == 200 and v["status"] == "geplaatst" and v["gepland_op"].startswith(morgen.strftime("%Y-%m-%dT%H:%M"))
+    gevraagd = []
+    views.werk_bij(extractor=lambda url: gevraagd.append(url) or {"view_count": 1})
+    assert gevraagd == []                                     # nog niet live: geen views ophalen
+    assert opslag.geplaatst_op(v) == v["gepland_op"]          # opruimen telt vanaf het moment dat hij live gaat
+    with pytest.raises(ValueError):
+        _NepHandler()("geplaatst", maak_voorstel(omgeving, "p2", "klaar")[0] if maak_job(omgeving, "p2", 1) else "", {"gepland_op": "2099-01-01T12:00"})

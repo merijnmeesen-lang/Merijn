@@ -49,6 +49,8 @@ def werk_bij(extractor=None) -> dict:
     for v in inbox.alle():
         if v.get("status") != "geplaatst" or not geldige_link(v.get("link", "")):
             continue
+        if v.get("gepland_op") and v["gepland_op"] > inbox.nu():
+            continue  # ingepland en nog niet live: dan zijn er nog geen views
         try:
             stats = haal_op(v["link"], extractor)
         except Exception as e:

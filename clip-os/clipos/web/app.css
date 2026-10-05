@@ -292,3 +292,10 @@ details > summary::-webkit-details-marker { display: none; }
 .opslag-lijst div { display: flex; align-items: center; gap: 8px; }
 .opslag-lijst i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
 .opslag-lijst b { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+/* plaatsen: geplaatst of ingepland */
+.plaats-knoppen { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.plaats-knoppen input[type="datetime-local"] { width: auto; flex: 1; min-width: 190px; }
+/* bronvideo's */
+.bron-rij { padding: 10px 0; border-bottom: 1px solid var(--lijn); display: flex; flex-direction: column; gap: 8px; }
+.bron-rij:last-child { border-bottom: 0; }

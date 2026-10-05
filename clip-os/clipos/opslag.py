@@ -64,6 +64,8 @@ def _binnen(pad: Path, *mappen: Path) -> bool:
 
 
 def geplaatst_op(v: dict) -> str | None:
+    if v.get("gepland_op"):  # ingepland: telt vanaf het moment dat hij live gaat
+        return max(v["gepland_op"], v.get("geplaatst_op") or "")
     if v.get("geplaatst_op"):
         return v["geplaatst_op"]
     for tijd, status in reversed(v.get("historie") or []):
@@ -220,6 +222,82 @@ def _bewaar_staat(uitslag: dict) -> None:
     werk.DATA.mkdir(parents=True, exist_ok=True)
     werk.schrijf_json(pad, {"laatst": inbox.nu(), "uitslag": uitslag,
                             "totaal_vrijgemaakt": int(oud.get("totaal_vrijgemaakt", 0)) + uitslag["vrijgemaakt"]})
+
+
+# ---------- met de hand verwijderen (knoppen in Clip-OS) ----------
+
+KLEINE_BESTANDEN = {"job.json", "bron_info.json", "transcript.json", "transcript.txt", "clips.json", "ideeen_geregistreerd", "afgekeurd"}
+
+
+def _video_van(v: dict) -> list[Path]:
+    """De videobestanden van één voorstel (in output/ en jobs/), alleen binnen de Clip-OS-mappen."""
+    uit = []
+    if v.get("map"):
+        map_ = werk.ROOT / v["map"]
+        if _binnen(map_, werk.OUTPUT) and len(map_.resolve().relative_to(werk.OUTPUT.resolve()).parts) == 3:
+            uit.append(map_)
+    if v.get("job") and v.get("clip_id"):
+        pad = werk.JOBS / v["job"] / "clips" / v["clip_id"] / "video.mp4"
+        if _binnen(pad, werk.JOBS):
+            uit.append(pad)
+    return [p for p in uit if p.exists()]
+
+
+def verwijder_video(vid: str, reden: str = "") -> dict:
+    """Een gemaakte video (bij Plaatsen) weggooien. Het idee gaat naar 'afgewezen' en kan terug ('Terugzetten')."""
+    v = inbox.lees(vid)
+    if v.get("status") not in ("klaar", "fout"):
+        raise ValueError("Alleen video's die klaar zijn (of mislukt) kun je hier verwijderen.")
+    for pad in _video_van(v):
+        _verwijder({"pad": pad})
+    reden = " ".join(str(reden).split())[:300]
+    return inbox.zet(vid, status="afgewezen", map=None, video_opgeruimd=inbox.nu(),
+                     afwijsreden=f"Video verwijderd{': ' + reden if reden else ''}")
+
+
+def bron_bezig(job: str) -> bool:
+    """Wordt er nu iets met deze bron gedaan (video maken of een Claude-taak)?"""
+    if any(v.get("job") == job and v.get("status") in IN_PRODUCTIE for v in inbox.alle()):
+        return True
+    for p in (werk.DATA / "claude").glob("*.json") if (werk.DATA / "claude").exists() else []:
+        try:
+            t = werk.lees_json(p)
+        except (OSError, ValueError):
+            continue
+        if t.get("status") in ("wacht", "bezig") and (t.get("data") or {}).get("job") == job:
+            return True
+    return False
+
+
+def verwijder_bron(job: str, reden: str = "") -> dict:
+    """Een bronvideo afkeuren: de podcast en de clips weg, de ideeën die nog openstaan naar 'afgewezen'.
+
+    Klaar en geplaatste video's blijven staan (met hun views). Kleine bestanden (transcript, gegevens) blijven
+    bewaard, zodat 'Opnieuw maken' van een video die al klaar is nog werkt."""
+    import re
+
+    if not re.fullmatch(r"[\w.\-]{1,160}", job or ""):
+        raise ValueError("Onbekende bronvideo")
+    job_dir = werk.JOBS / job
+    if not (job_dir.is_dir() and _binnen(job_dir, werk.JOBS)):
+        raise ValueError("Onbekende bronvideo")
+    if bron_bezig(job):
+        raise ValueError("Clip-OS is nu met deze video bezig. Wacht tot dat klaar is en probeer het dan opnieuw.")
+    reden = " ".join(str(reden).split())[:300]
+    vrij = 0
+    for pad in list(job_dir.iterdir()):
+        if pad.name in KLEINE_BESTANDEN:
+            continue
+        vrij += _grootte(pad)
+        _verwijder({"pad": pad})
+    (job_dir / "afgekeurd").write_text(f"{inbox.nu()} {reden}".strip(), encoding="utf-8")
+    ideeen = 0
+    for v in inbox.alle():
+        if v.get("job") == job and v.get("status") in ("idee", "fout"):
+            inbox.zet(v["id"], status="afgewezen", bron_afgekeurd=True,
+                      afwijsreden=f"Bron afgekeurd{': ' + reden if reden else ''}")
+            ideeen += 1
+    return {"vrijgemaakt": vrij, "ideeen": ideeen}
 
 
 def leesbaar(n: float) -> str:

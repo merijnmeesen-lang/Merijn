@@ -57,6 +57,8 @@ def te_doen() -> list[str]:
     """Jobs met transcript waarvoor nog geen ideeën in de inbox staan."""
     uit = []
     for job_dir in sorted(werk.JOBS.glob("*")):
+        if (job_dir / "afgekeurd").exists():
+            continue
         if (job_dir / "transcript.json").exists() and not (job_dir / "ideeen_geregistreerd").exists():
             uit.append(job_dir.name)
     return uit
@@ -66,7 +68,7 @@ def open_jobs() -> list[dict]:
     """Bronvideo's waar nog geen ideeën van in de inbox staan (bijv. een onderbroken taak)."""
     uit = []
     for job_dir in sorted(werk.JOBS.glob("*"), reverse=True):
-        if not (job_dir / "job.json").exists() or (job_dir / "ideeen_geregistreerd").exists():
+        if not (job_dir / "job.json").exists() or (job_dir / "ideeen_geregistreerd").exists() or (job_dir / "afgekeurd").exists():
             continue
         meta = werk.lees_json(job_dir / "job.json")
         info = werk.lees_json(job_dir / "bron_info.json") if (job_dir / "bron_info.json").exists() else {}
@@ -74,6 +76,32 @@ def open_jobs() -> list[dict]:
                     "gemaakt": meta.get("gemaakt"), "gedownload": (job_dir / "bron.mp4").exists(),
                     "uitgeschreven": (job_dir / "transcript.json").exists()})
     return uit[:20]
+
+
+def bronnen(maximum: int = 40) -> list[dict]:
+    """De bronvideo's (gedownloade podcasts), nieuwste eerst, met hoeveel ideeën er nog openstaan."""
+    from . import opslag
+
+    per_job: dict[str, dict] = {}
+    for v in inbox.alle():
+        t = per_job.setdefault(v.get("job"), {})
+        t[v.get("status")] = t.get(v.get("status"), 0) + 1
+        t["taal"] = t.get("taal") or v.get("taal")
+    uit = []
+    for job_dir in sorted(werk.JOBS.glob("*"), reverse=True) if werk.JOBS.exists() else []:
+        if not (job_dir / "job.json").exists() or (job_dir / "afgekeurd").exists():
+            continue
+        meta = werk.lees_json(job_dir / "job.json")
+        info = werk.lees_json(job_dir / "bron_info.json") if (job_dir / "bron_info.json").exists() else {}
+        telling = per_job.get(job_dir.name, {})
+        uit.append({"job": job_dir.name, "titel": info.get("titel") or Path(str(meta.get("bron", job_dir.name))).name,
+                    "kanaal": info.get("kanaal", ""), "gemaakt": meta.get("gemaakt"), "taal": telling.get("taal"),
+                    "ideeen": telling.get("idee", 0), "klaar": telling.get("klaar", 0), "geplaatst": telling.get("geplaatst", 0),
+                    "bezig": telling.get("akkoord", 0) + telling.get("bezig", 0),
+                    "grootte": opslag._grootte(job_dir / "bron.mp4") + opslag._grootte(job_dir / "clips")})
+        if len(uit) >= maximum:
+            break
+    return uit
 
 
 # ---------- ideeën ----------
