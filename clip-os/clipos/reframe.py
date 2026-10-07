@@ -9,18 +9,26 @@ from statistics import median
 MODEL = Path(__file__).parent / "modellen" / "face_detection_yunet_2023mar.onnx"
 
 
+MIN_ZEKERHEID = 0.6        # hoe zeker de detector moet zijn dat het een gezicht is
+MIN_GEZICHT_HOOGTE = 0.05  # gezicht minstens 5% van de beeldhoogte
+MIN_IN_SHOT = 0.4          # in minstens 40% van de metingen van een shot moet het gezicht (op dezelfde plek) gevonden zijn
+SPREIDING = 0.12           # "dezelfde plek": binnen 12% van de beeldbreedte
+
+
 def _detector():
     """YuNet (nauwkeurig, ook bij schuin gezicht) als het model er is, anders de eenvoudige Haar-detector.
     Geeft een functie terug: beeld -> [(x, y, b, h, kin_factor)] in pixels."""
     import cv2
 
     if MODEL.exists() and hasattr(cv2, "FaceDetectorYN"):
-        yunet = cv2.FaceDetectorYN.create(str(MODEL), "", (320, 320), 0.55)
+        yunet = cv2.FaceDetectorYN.create(str(MODEL), "", (320, 320), MIN_ZEKERHEID)
 
         def detect(beeld):
             yunet.setInputSize((beeld.shape[1], beeld.shape[0]))
             _, gevonden = yunet.detect(beeld)
-            return [(float(f[0]), float(f[1]), float(f[2]), float(f[3]), 1.12) for f in (gevonden if gevonden is not None else [])]
+            min_h = MIN_GEZICHT_HOOGTE * beeld.shape[0]  # piepkleine "gezichten" zijn vaak lampjes of vlekken in de achtergrond
+            return [(float(f[0]), float(f[1]), float(f[2]), float(f[3]), 1.12)
+                    for f in (gevonden if gevonden is not None else []) if f[3] >= min_h]
         return detect
 
     cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
@@ -201,10 +209,19 @@ def split_crop(persoon: dict, bron_b: int, bron_h: int, ch: int | None = None) -
     return cb, ch, max(0, min(bron_b - cb, x)), max(0, min(bron_h - ch, y))
 
 
-def _volg_shot(shot, begin: float, drempel: float, venster: int, min_gezicht: float) -> list[tuple[float, float | None]]:
-    """Uitsnede-posities binnen één camerashot. Geen (of bijna geen) gezicht: [(begin, None)]."""
+def _volg_shot(shot, begin: float, drempel: float, venster: int, min_gezicht: float = MIN_IN_SHOT) -> list[tuple[float, float | None]]:
+    """Uitsnede-posities binnen één camerashot.
+
+    Twijfel = hele beeld ([(begin, None)] → wazige balken): liever het hele beeld dan een uitsnede op de verkeerde plek.
+    Twijfel is: (bijna) geen gezicht gevonden, of de "gezichten" springen alle kanten op (vaak valse treffers in een
+    wazige achtergrond terwijl het echte gezicht, bijv. van opzij, gemist wordt)."""
     gevonden = [p[1] for p in shot if p[1] is not None]
-    if len(gevonden) < max(1, min_gezicht * len(shot)):
+    nodig = max(1, min_gezicht * len(shot))
+    if len(gevonden) < nodig:
+        return [(begin, None)]
+    gesorteerd = sorted(gevonden)
+    grootste_groep = max(sum(1 for y in gesorteerd if x <= y <= x + 2 * SPREIDING) for x in gesorteerd)
+    if grootste_groep < nodig:
         return [(begin, None)]
     xs, laatste = [], None
     for p in shot:
@@ -243,7 +260,7 @@ def _samenvoegen(segmenten, drempel: float):
 
 
 def crop_segmenten(posities, duur: float, drempel: float = 0.08, venster: int = 5,
-                   knippen: list[float] | None = None, min_gezicht: float = 0.25) -> list[tuple[float, float | None]]:
+                   knippen: list[float] | None = None, min_gezicht: float = MIN_IN_SHOT) -> list[tuple[float, float | None]]:
     """Zet ruwe gezichtsposities om in rustige stukken [(vanaf_tijd, x_fractie of None)].
 
     - per camerashot apart (`knippen`): een positie wordt nooit meegenomen naar een ander shot, anders
@@ -285,7 +302,7 @@ def indeling(posities, duur: float, knippen: list[float] | None = None, split: b
         if twee:
             uit.append({"t": begin, "soort": "split", **twee})
             continue
-        for t, x in _volg_shot(shot, begin, drempel, 5, 0.25):
+        for t, x in _volg_shot(shot, begin, drempel, 5):
             uit.append({"t": t, "soort": "vol", "x": None} if x is None else {"t": t, "soort": "volg", "x": x})
     if not uit:
         return [{"t": 0.0, "soort": "volg", "x": 0.5}]
@@ -345,6 +362,29 @@ def hook_y(posities, hook_duur: float = 3.0, hoogte: int = 1920) -> int:
         return HOOK_STANDAARD_Y
     y = int(max(onder) * hoogte) + 40
     return max(HOOK_STANDAARD_Y, min(HOOK_MAX_Y, y))
+
+
+HOOK_HOOGTE = 190  # ruimte die een hook van twee regels inneemt (1080x1920)
+
+
+def hook_plek(posities, hoogte: int = 1920) -> tuple[int, bool]:
+    """(y, onderkant) voor de hook in een shot waarin de uitsnede het gezicht volgt.
+
+    - Past hij onder de kin (boven de ondertitels)? Dan daar (y = bovenkant van de hook).
+    - Zit het gezicht laag en groot in beeld, dan boven het hoofd (onderkant = True: y is de onderkant van de hook).
+    - Past beide niet, dan zo hoog mogelijk (net onder de knoppen van YouTube): liever over het haar dan over de mond."""
+    onder = [p[2] for p in posities if len(p) > 2 and p[2] is not None]
+    if not onder:
+        return HOOK_STANDAARD_Y, False
+    y = int(max(onder) * hoogte) + 40
+    if y <= HOOK_MAX_Y:
+        return max(HOOK_STANDAARD_Y, y), False
+    toppen = [p[3][0]["cy"] - 0.75 * p[3][0]["grootte"] for p in posities if len(p) > 3 and p[3]]
+    if toppen:
+        boven = int(min(toppen) * hoogte) - 30
+        if boven - HOOK_HOOGTE >= HOOK_STANDAARD_Y:
+            return boven, True
+    return HOOK_STANDAARD_Y, False
 
 
 def crop_x_expressie(segmenten, bron_breedte: int, crop_breedte: int) -> str:

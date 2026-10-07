@@ -87,6 +87,7 @@ POP_DUUR = 1.4
 def maak_ass(woorden: list[dict], clip_start: float, duur: float, hook: str = "", hook_duur: float = 3.0,
              hook_y: int = VEILIG_BOVEN, onder_pos: tuple[int, int] | None = None, hook_onderkant: bool = False,
              split_intervallen: list[tuple[float, float]] | None = None,
+             hook_plekken: list[tuple[float, float, int, bool]] | None = None,
              popups: list[tuple[float, str, int]] | None = None) -> str:
     """woorden: absolute tijden uit het transcript; ze worden omgerekend naar clip-tijd.
 
@@ -98,8 +99,11 @@ def maak_ass(woorden: list[dict], clip_start: float, duur: float, hook: str = ""
     ]
     regels = [KOP]
     if hook:
-        regels.append(f"Dialogue: 1,{ass_tijd(0)},{ass_tijd(min(hook_duur, duur))},Hook,,0,0,0,,"
-                      f"{{\\an{2 if hook_onderkant else 8}\\pos(540,{int(hook_y)})}}{schoon(hook)}\n")
+        # hook_plekken: per camerashot een eigen plek (de hook verhuist mee als de camera wisselt)
+        for van, tot, y, onderkant in hook_plekken or [(0.0, min(hook_duur, duur), hook_y, hook_onderkant)]:
+            if tot > van:
+                regels.append(f"Dialogue: 1,{ass_tijd(van)},{ass_tijd(tot)},Hook,,0,0,0,,"
+                              f"{{\\an{2 if onderkant else 8}\\pos(540,{int(y)})}}{schoon(hook)}\n")
 
     for t, tekst, y in popups or []:
         if 0 <= t < duur and schoon(tekst):

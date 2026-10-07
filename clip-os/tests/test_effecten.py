@@ -230,3 +230,38 @@ def test_download_kiest_1440p_maar_geen_av1():
         ydl.sort_formats(info)
         gekozen = list(ydl.build_format_selector(bron.FORMAAT)({"formats": info["formats"], "has_merged_format": True}))
         assert gekozen[0]["format_id"] == verwacht
+
+
+# ---------- hook verhuist mee, en nooit over het gezicht ----------
+
+def meting_h(t, cx, cy, grootte):
+    g = {"cx": cx, "cy": cy, "onder": min(1.0, cy + 0.56 * grootte), "grootte": grootte}
+    return (t, cx, g["onder"], [g])
+
+
+def test_hook_onder_de_kin_of_boven_het_hoofd():
+    hoog = [meting_h(i * 0.25, 0.5, 0.30, 0.25) for i in range(8)]      # gezicht hoog in beeld: onder de kin
+    y, boven = reframe.hook_plek(hoog)
+    assert not boven and 340 <= y <= reframe.HOOK_MAX_Y
+    laag = [meting_h(i * 0.25, 0.5, 0.62, 0.35) for i in range(8)]      # groot en laag: boven het hoofd
+    y, boven = reframe.hook_plek(laag)
+    assert boven and y - reframe.HOOK_HOOGTE >= 340 and y < 0.62 * 1920 - 0.5 * 0.35 * 1920
+
+
+def test_hook_verhuist_mee_bij_camerawissel():
+    from clipos import render
+    lagen = [{"t": 0.0, "t_bron": 0.0, "soort": "volg", "x": 0.5},
+             {"t": 1.5, "t_bron": 1.5, "soort": "split", "links": {}, "rechts": {}},
+             {"t": 5.0, "t_bron": 5.0, "soort": "volg", "x": 0.5}]
+    posities = [meting_h(i * 0.25, 0.5, 0.30, 0.25) for i in range(6)]
+    stukken = render.hook_stukken(lagen, posities, 10.0)
+    assert stukken[0][:2] == (0.0, 1.5) and not stukken[0][3]
+    assert stukken[1] == (1.5, 3.0, 935, True)                          # op de naad tussen de twee sprekers
+
+
+def test_valse_gezichten_in_de_achtergrond_geven_het_hele_beeld():
+    rommel = [(i * 0.25, x, 0.5, [{"cx": x, "cy": 0.4, "onder": 0.5, "grootte": 0.08}]) if x is not None else (i * 0.25, None, None, [])
+              for i, x in enumerate([0.1, None, 0.6, None, 0.35, None, 0.85, None, 0.2, None])]
+    assert reframe.crop_segmenten(rommel, 3.0) == [(0.0, None)]
+    echt = [(i * 0.25, 0.4 + (0.01 if i % 2 else 0), 0.5, []) for i in range(10)]
+    assert reframe.crop_segmenten(echt, 3.0)[0][1] == pytest.approx(0.4, abs=0.02)

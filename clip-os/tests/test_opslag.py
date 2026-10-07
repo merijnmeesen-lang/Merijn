@@ -240,3 +240,17 @@ def test_trendvideo_verwijderen_komt_niet_terug(omgeving, monkeypatch):
     assert [v["url"] for v in nieuw] == ["https://www.youtube.com/watch?v=NIEUW777777"]   # ook bij nieuw onderzoek weg
     with pytest.raises(ValueError):
         trends.verberg("javascript:alert(1)")
+
+
+def test_opnieuw_maken_met_gekozen_indeling(omgeving):
+    maak_job(omgeving, "m", 1)
+    vid, _ = maak_voorstel(omgeving, "m", "klaar")
+    from clipos import dashboard
+    while not dashboard.WACHTRIJ.empty():
+        dashboard.WACHTRIJ.get_nowait()
+    assert _NepHandler()("opnieuw", vid, {"modus": "vol"})[0] == 200
+    assert inbox.lees(vid)["modus"] == "vol" and inbox.lees(vid)["status"] == "akkoord"
+    assert dashboard.WACHTRIJ.get_nowait() == vid
+    inbox.zet(vid, status="klaar")
+    with pytest.raises(ValueError):
+        _NepHandler()("opnieuw", vid, {"modus": "iets"})

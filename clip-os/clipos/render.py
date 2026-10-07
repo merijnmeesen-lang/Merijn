@@ -113,10 +113,42 @@ def lagen_naar_cliptijd(lagen: list[dict], start: float, stukken) -> list[dict]:
     for seg in lagen:
         t = round(tempo.remap(start + seg["t"], stukken), 3)
         if uit and t <= uit[-1]["t"] + 1e-6:
-            uit[-1] = {**seg, "t": uit[-1]["t"]}  # stuk valt helemaal in een weggeknipte pauze
+            uit[-1] = {**seg, "t": uit[-1]["t"], "t_bron": seg["t"]}  # stuk valt helemaal in een weggeknipte pauze
         else:
-            uit.append({**seg, "t": t})
+            uit.append({**seg, "t": t, "t_bron": seg["t"]})
     uit[0]["t"] = 0.0
+    return uit
+
+
+HOOK_DUUR = 3.0
+
+
+def hook_stukken(lagen: list[dict], posities, duur: float) -> list[tuple[float, float, int, bool]]:
+    """Waar de hook staat, per camerashot in de eerste seconden: [(van, tot, y, onderkant)].
+
+    Wisselt de camera terwijl de hook in beeld is (bijv. van een close-up naar twee sprekers), dan verhuist de hook
+    mee. Anders kan hij op de ondertitels of een gezicht van het nieuwe shot vallen."""
+    eind = min(HOOK_DUUR, duur)
+    if not lagen:
+        return [(0.0, eind, reframe.HOOK_STANDAARD_Y, False)]
+    uit = []
+    for i, seg in enumerate(lagen):
+        van, tot = seg["t"], lagen[i + 1]["t"] if i + 1 < len(lagen) else duur
+        if van >= eind:
+            break
+        if seg["soort"] == "split":
+            y, onderkant = NAAD_HOOK_Y, True  # op de naad tussen de twee sprekers
+        elif seg["soort"] == "volg":
+            b_van = seg.get("t_bron", van)
+            b_tot = lagen[i + 1].get("t_bron", tot) if i + 1 < len(lagen) else float("inf")
+            in_shot = [p for p in posities if b_van <= p[0] < b_tot]
+            y, onderkant = reframe.hook_plek(in_shot)  # onder de kin, of boven het hoofd als het gezicht laag zit
+        else:
+            y, onderkant = reframe.HOOK_STANDAARD_Y, False  # wazige balken: boven het beeld
+        if uit and uit[-1][2:] == (y, onderkant):
+            uit[-1] = (uit[-1][0], min(tot, eind), y, onderkant)
+        else:
+            uit.append((van, min(tot, eind), y, onderkant))
     return uit
 
 
@@ -170,14 +202,15 @@ def render_clip(job_dir: Path, clip: dict, modus: str = "auto", montage: dict | 
     if eerste == "split":
         hook_top = NAAD_HOOK_Y  # op de naad tussen de twee sprekers (bovenin zitten de knoppen van YouTube)
     elif eerste == "volg":
-        hook_top = reframe.hook_y(posities)
+        hook_top = reframe.hook_plek([p for p in posities if p[0] <= HOOK_DUUR])[0]
     if modus == "split":
         onder_pos = NAAD_ONDERTITEL
 
     # 3. pop-up tekst bij sterke getallen of woorden (door Claude gekozen, anders automatisch)
     popups = []
     if montage.get("popup_tekst", True):
-        volg_y = min(1100, reframe.hook_y(posities, hook_duur=end - start) + 70) if posities else 1000
+        plek_y, boven_hoofd = reframe.hook_plek(posities) if posities else (930, False)
+        volg_y = plek_y - 75 if boven_hoofd else min(1100, plek_y + 70)  # pop-up niet over het gezicht
         for pop in effecten.popup_lijst(clip.get("kernwoorden"), woorden, start, end):
             t = tempo.remap(pop["t"], stukken)
             if POP_NIET_VOOR <= t <= duur - 0.6:
@@ -188,7 +221,7 @@ def render_clip(job_dir: Path, clip: dict, modus: str = "auto", montage: dict | 
     woorden_nieuw = tempo.remap_woorden(woorden, stukken)
     (clip_dir / "subs.ass").write_text(
         maak_ass(woorden_nieuw, 0.0, duur, clip.get("hook", ""), hook_y=hook_top, onder_pos=onder_pos,
-                 hook_onderkant=eerste == "split",
+                 hook_onderkant=eerste == "split", hook_plekken=hook_stukken(lagen, posities, duur),
                  split_intervallen=split_iv if modus == "mix" else None, popups=popups), encoding="utf-8")
 
     # 5. filtergraaf: beeld

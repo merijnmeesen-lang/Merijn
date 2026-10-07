@@ -344,7 +344,10 @@ class Handler(BaseHTTPRequestHandler):
             inbox.zet(vid, status="akkoord", **wijzig)
             WACHTRIJ.put(vid)
         elif actie == "opnieuw" and v["status"] in ("fout", "klaar"):
-            inbox.zet(vid, status="akkoord")
+            modus = str(body.get("modus") or v.get("modus") or "auto")
+            if modus not in ("auto", "volg", "split", "vol"):
+                raise ValueError("Onbekende indeling")
+            inbox.zet(vid, status="akkoord", modus=modus)
             WACHTRIJ.put(vid)
         elif actie == "afwijzen" and v["status"] == "idee":
             inbox.zet(vid, status="afgewezen", afwijsreden=str(body.get("reden", ""))[:300])

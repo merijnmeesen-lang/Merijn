@@ -449,7 +449,10 @@ function paginaPlaatsen() {
           redenen: ["Video niet goed gelukt", "Saai fragment", "Hook niet goed", "Beeld klopt niet", "Al genoeg over dit onderwerp"],
           knop: "Video verwijderen", actie: "video-verwijder", data: { id: v.id } })
         : `<div class="rij"><a class="knop zacht klein" href="/video/${encodeURIComponent(v.id)}?download=1">${icoon("download")}Download mp4</a>
-          <button class="knop zacht klein" data-actie="opnieuw" data-id="${id}">${icoon("refresh")}Opnieuw maken</button>
+          <span class="opnieuw-groep"><select class="invoer klein" id="md-${id}" title="Indeling bij opnieuw maken">
+            ${[["auto", "Indeling: automatisch"], ["volg", "Gezicht volgen"], ["split", "Twee sprekers onder elkaar"], ["vol", "Hele beeld (wazige balken)"]]
+              .map(([k, n]) => `<option value="${k}" ${(v.modus || "auto") === k ? "selected" : ""}>${n}</option>`).join("")}</select>
+          <button class="knop zacht klein" data-actie="opnieuw" data-id="${id}">${icoon("refresh")}Opnieuw maken</button></span>
           <button class="knop gevaar klein" data-actie="video-vraag" data-id="${id}">${icoon("x")}Verwijderen</button>
           <span class="flauw klein">${esc(v.map)}</span></div>`}
       </div>
@@ -878,7 +881,11 @@ const ACTIES = {
     toast(reden ? "Afgewezen. Claude leert hiervan." : "Afgewezen. Tip: met een reden leert Claude sneller.");
   },
   async terug(el) { await api.post(`/api/terug/${encodeURIComponent(el.dataset.id)}`); toast("Teruggezet bij Ideeën"); },
-  async opnieuw(el) { await api.post(`/api/opnieuw/${encodeURIComponent(el.dataset.id)}`); toast("Wordt opnieuw gemaakt"); },
+  async opnieuw(el) {
+    const modus = document.getElementById("md-" + el.dataset.id)?.value;
+    await api.post(`/api/opnieuw/${encodeURIComponent(el.dataset.id)}`, modus ? { modus } : {});
+    toast("Wordt opnieuw gemaakt");
+  },
   async geplaatst(el) {
     const id = el.dataset.id;
     await api.post(`/api/geplaatst/${encodeURIComponent(id)}`, { link: document.getElementById("l-" + id)?.value || "" });
