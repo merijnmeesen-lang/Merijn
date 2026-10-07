@@ -150,6 +150,31 @@ def alle(n: int = 15) -> list[dict]:
     return uit
 
 
+def verwijder(tid: str) -> None:
+    """Een afgeronde taak (met logboek) uit de lijst halen. Lopende taken eerst stoppen."""
+    taak = lees(tid)
+    if taak.get("status") in ("wacht", "bezig"):
+        raise ValueError("Deze taak loopt nog. Stop hem eerst.")
+    for pad in (_pad(tid), MAP / f"{tid}.log"):
+        try:
+            pad.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def verwijder_afgerond() -> int:
+    """Alle afgeronde taken (klaar, fout, gestopt) wissen."""
+    aantal = 0
+    for p in list(MAP.glob("*.json")) if MAP.exists() else []:
+        try:
+            if werk.lees_json(p).get("status") in ("klaar", "fout", "gestopt"):
+                verwijder(p.stem)
+                aantal += 1
+        except (json.JSONDecodeError, OSError, ValueError):
+            continue
+    return aantal
+
+
 def stop(tid: str) -> dict:
     taak = lees(tid)
     if taak["status"] == "wacht":

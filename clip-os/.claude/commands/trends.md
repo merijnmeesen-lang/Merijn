@@ -27,6 +27,7 @@ Doe het onderzoek **zelf** (geen subagent) en werk **snel**: de eigenaar zit te 
    - Engelse zoektermen voor `en`, Nederlandse voor `nl`, bij `beide` allebei in dezelfde opdracht.
    - Alleen als dit te weinig oplevert: nog één keer met `--periode maand`.
    - De uitvoer is JSON met `views`, `per_dag` (views per dag sinds upload), `duur_min`, `toestemming` en `campagne`.
+   - Video's die de eigenaar eerder heeft verwijderd, haalt Clip-OS er zelf al uit. Zet ze niet terug in het rapport.
 4. **Kiezen:** selecteer 6 tot 12 video's. Voorrang voor: `toestemming: campagne`, dan een hoge `per_dag`, en een lengte
    van 15 tot 180 minuten (echte gesprekken en geen nieuwsflitsen). Maximaal 3 video's per kanaal.
 5. **Schrijf `data/trends/rapport.json`** (UTF-8):

@@ -369,6 +369,7 @@ function paginaTrends() {
           ${mag ? `<button class="knop primair" data-actie="trend-uitwerken" data-url="${esc(v.url)}" data-brief="${esc(v.campagne)}">${icoon("sparkle")}Maak ideeën</button>`
                 : `<button class="knop zacht" data-actie="trend-uitwerken" data-url="${esc(v.url)}" data-brief="">Ik heb toestemming, uitwerken</button>`}
           <a class="knop zacht" href="${esc(v.url)}" target="_blank" rel="noopener">${icoon("extern")}Bekijk op YouTube</a>
+          <button class="knop gevaar" data-actie="trend-weg" data-url="${esc(v.url)}" title="Niet goed genoeg: weghalen en niet meer voorstellen">${icoon("x")}Verwijderen</button>
         </div>
         ${mag ? "" : `<div class="tip">Alleen uitwerken en plaatsen als deze maker clippen toestaat, bijvoorbeeld via een campagne op Whop, Vyro of ClipArmy.</div>`}
       </div>
@@ -619,13 +620,15 @@ function paginaClaude() {
         <span class="flauw klein"> · ${j.uitgeschreven ? "uitgeschreven ✓" : j.gedownload ? "gedownload, nog niet uitgeschreven" : "nog niet gedownload"}</span></span>
         ${j.gedownload ? `<button class="knop zacht klein" style="margin-left:auto" data-actie="afmaken" data-job="${esc(j.job)}" ${taken.some(t => ["wacht", "bezig"].includes(t.status) && t.data && t.data.job === j.job) ? "disabled" : ""}>${icoon("play")}Afmaken</button>` : ""}
         <button class="knop gevaar klein" ${j.gedownload ? "" : `style="margin-left:auto"`} data-actie="bron-weg" data-job="${esc(j.job)}" title="Deze video niet afmaken en verwijderen" ${taken.some(t => ["wacht", "bezig"].includes(t.status) && t.data && t.data.job === j.job) ? "disabled" : ""}>${icoon("x")}</button></div>`).join("")}</div></div>` : ""}
-    <div class="sectie"><h2>Taken</h2><span>live logboek</span></div>
+    <div class="sectie"><h2>Taken</h2><span>live logboek</span>
+      ${taken.some(t => ["klaar", "fout", "gestopt"].includes(t.status)) ? `<button class="knop zacht klein" style="margin-left:auto" data-actie="taken-wissen">${icoon("x")}Afgeronde taken wissen</button>` : ""}</div>
     ${taken.length ? `<div class="stapel">${taken.map(t => {
       const toon = t.status === "bezig" || S.open.has(t.id);
       return `<article class="kaart">
         <div class="rij tussen"><div class="rij" style="gap:10px"><b>${esc(t.titel)}</b>${statusBadge(t)}<span class="flauw klein">${esc(relTijd(t.gemaakt))}</span></div>
           <div class="rij" style="gap:8px">${["wacht", "bezig"].includes(t.status) ? `<button class="knop gevaar klein" data-actie="claude-stop" data-id="${esc(t.id)}">${icoon("stop")}Stoppen</button>` : ""}
-          ${t.status !== "wacht" ? `<button class="knop zacht klein" data-actie="log" data-id="${esc(t.id)}">${toon ? "Logboek verbergen" : "Logboek tonen"}</button>` : ""}</div></div>
+          ${t.status !== "wacht" ? `<button class="knop zacht klein" data-actie="log" data-id="${esc(t.id)}">${toon ? "Logboek verbergen" : "Logboek tonen"}</button>` : ""}
+          ${["wacht", "bezig"].includes(t.status) ? "" : `<button class="knop gevaar klein" data-actie="taak-weg" data-id="${esc(t.id)}" title="Deze taak en het logboek verwijderen" aria-label="Verwijderen">${icoon("x")}</button>`}</div></div>
         <div class="zacht klein" style="margin-top:4px;overflow-wrap:anywhere">${detail(t)}</div>
         ${t.fout ? `<div class="foutblok" style="margin-top:10px">${esc(t.fout)}</div>` : ""}
         ${toon ? `<pre class="log">${esc((t.log || []).join("\n") || "Nog geen uitvoer…")}</pre>` : ""}
@@ -998,6 +1001,21 @@ const ACTIES = {
     await api.post(`/api/geplaatst/${encodeURIComponent(id)}`, { link: document.getElementById("l-" + id)?.value || "", gepland_op: moment });
     vergeet("link-" + id, "gp-" + id);
     toast(`📅 Ingepland voor ${datumTijd(moment)}. Views komen binnen zodra hij live is.`);
+  },
+  async "trend-weg"(el) {
+    S.trends = (await api.post("/api/trends/verberg", { url: el.dataset.url })).rapport;
+    toast("Verwijderd. Deze video wordt ook bij nieuw onderzoek niet meer voorgesteld.");
+    renderPagina(true);
+  },
+  async "taak-weg"(el) {
+    await api.post(`/api/claude/verwijder/${encodeURIComponent(el.dataset.id)}`);
+    S.open.delete(el.dataset.id);
+    toast("Taak verwijderd");
+  },
+  async "taken-wissen"() {
+    if (!confirm("Alle afgeronde taken en hun logboeken wissen? Lopende taken blijven staan.")) return;
+    const r = await api.post("/api/claude/verwijder-afgerond");
+    toast(`${r.aantal} taak${r.aantal === 1 ? "" : "en"} gewist`);
   },
   async opruimen() {
     const r = await api.post("/api/opslag/opruimen");

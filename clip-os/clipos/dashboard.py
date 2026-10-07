@@ -308,6 +308,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True, "taak": claude_taken.nieuw(m.group(1), body)})
         if m := re.fullmatch(r"/api/claude/stop/([0-9a-f]{12})", pad):
             return self._json({"ok": True, "taak": claude_taken.stop(m.group(1))})
+        if m := re.fullmatch(r"/api/claude/verwijder/([0-9a-f]{12})", pad):
+            claude_taken.verwijder(m.group(1))
+            return self._json({"ok": True})
+        if pad == "/api/claude/verwijder-afgerond":
+            return self._json({"ok": True, "aantal": claude_taken.verwijder_afgerond()})
+        if pad == "/api/trends/verberg":
+            from . import trends
+            trends.verberg(str(body.get("url", "")))
+            return self._json({"ok": True, "rapport": trends.lees_rapport()})
         if m := re.fullmatch(r"/api/briefs/([a-z0-9-]{2,60})", pad):
             brief = valideer_brief(body)
             werk.schrijf_json(werk.BRIEFS / f"{m.group(1)}.json", brief)

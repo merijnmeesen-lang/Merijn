@@ -172,10 +172,38 @@ def kanaal(url: str, maximum: int = 8, min_minuten: int = 10) -> list[dict]:
     return _details([_url(e) for e in kandidaten])
 
 
+VERBORGEN = MAP / "verborgen.json"
+
+
+def video_id(url: str) -> str:
+    """YouTube-video-id uit een link (watch?v=, youtu.be/, shorts/), anders de link zelf."""
+    m = re.search(r"(?:v=|youtu\.be/|/shorts/|/live/)([\w-]{6,})", url or "")
+    return m.group(1) if m else (url or "").strip().lower()
+
+
+def verborgen() -> set[str]:
+    try:
+        return set(werk.lees_json(VERBORGEN)) if VERBORGEN.exists() else set()
+    except (json.JSONDecodeError, OSError, TypeError):
+        return set()
+
+
+def verberg(url: str) -> int:
+    """Een trendvideo die je niet goed vindt: uit het rapport, en bij volgend onderzoek niet meer voorstellen."""
+    if not re.fullmatch(r"https?://\S{5,300}", url or ""):
+        raise ValueError("Ongeldige link")
+    lijst = verborgen() | {video_id(url)}
+    MAP.mkdir(parents=True, exist_ok=True)
+    werk.schrijf_json(VERBORGEN, sorted(lijst)[-1000:])
+    return len(lijst)
+
+
 def verrijk(videos: list[dict]) -> list[dict]:
     from .productie import actieve_briefs
 
     briefs = actieve_briefs()
+    weg = verborgen()
+    videos = [v for v in videos if video_id(v.get("url", "")) not in weg]  # door de eigenaar verwijderd
     for v in videos:
         v["campagne"] = campagne_voor(v, briefs)
         v["toestemming"] = "campagne" if v["campagne"] else "onbekend"
@@ -188,9 +216,12 @@ def lees_rapport() -> dict | None:
     if not RAPPORT.exists():
         return None
     try:
-        return werk.lees_json(RAPPORT)
+        r = werk.lees_json(RAPPORT)
     except (json.JSONDecodeError, OSError):
         return None
+    weg = verborgen()
+    r["videos"] = [v for v in r.get("videos") or [] if video_id(v.get("url", "")) not in weg]
+    return r
 
 
 def rond_af() -> dict:

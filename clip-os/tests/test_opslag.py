@@ -206,3 +206,37 @@ def test_inplannen(omgeving):
     assert opslag.geplaatst_op(v) == v["gepland_op"]          # opruimen telt vanaf het moment dat hij live gaat
     with pytest.raises(ValueError):
         _NepHandler()("geplaatst", maak_voorstel(omgeving, "p2", "klaar")[0] if maak_job(omgeving, "p2", 1) else "", {"gepland_op": "2099-01-01T12:00"})
+
+
+# ---------- taken en trendvideo's verwijderen ----------
+
+def test_claude_taken_verwijderen(omgeving, monkeypatch):
+    from clipos import claude_taken
+    monkeypatch.setattr(claude_taken, "MAP", omgeving / "data" / "claude")
+    for tid, status in (("aaaaaaaaaaa1", "klaar"), ("aaaaaaaaaaa2", "fout"), ("aaaaaaaaaaa3", "bezig")):
+        claude_taken._schrijf({"id": tid, "status": status, "gemaakt": "2026-10-01T10:00:00"})
+        (claude_taken.MAP / f"{tid}.log").write_text("log")
+    with pytest.raises(ValueError):
+        claude_taken.verwijder("aaaaaaaaaaa3")                 # loopt nog
+    claude_taken.verwijder("aaaaaaaaaaa1")
+    assert not (claude_taken.MAP / "aaaaaaaaaaa1.json").exists() and not (claude_taken.MAP / "aaaaaaaaaaa1.log").exists()
+    assert claude_taken.verwijder_afgerond() == 1
+    assert [t["id"] for t in claude_taken.alle()] == ["aaaaaaaaaaa3"]
+
+
+def test_trendvideo_verwijderen_komt_niet_terug(omgeving, monkeypatch):
+    from clipos import trends
+    monkeypatch.setattr(trends, "MAP", omgeving / "data" / "trends")
+    monkeypatch.setattr(trends, "RAPPORT", trends.MAP / "rapport.json")
+    monkeypatch.setattr(trends, "VERBORGEN", trends.MAP / "verborgen.json")
+    trends.MAP.mkdir(parents=True)
+    werk.schrijf_json(trends.RAPPORT, {"videos": [{"url": "https://www.youtube.com/watch?v=abcDEF12345", "per_dag": 5},
+                                                  {"url": "https://www.youtube.com/watch?v=ZZZzzz99999", "per_dag": 3}]})
+    trends.verberg("https://www.youtube.com/watch?v=abcDEF12345&t=7s")
+    assert [v["url"] for v in trends.lees_rapport()["videos"]] == ["https://www.youtube.com/watch?v=ZZZzzz99999"]
+    monkeypatch.setattr("clipos.productie.actieve_briefs", lambda: [])
+    nieuw = trends.verrijk([{"url": "https://youtu.be/abcDEF12345", "per_dag": 9, "kanaal": "x"},
+                            {"url": "https://www.youtube.com/watch?v=NIEUW777777", "per_dag": 1, "kanaal": "y"}])
+    assert [v["url"] for v in nieuw] == ["https://www.youtube.com/watch?v=NIEUW777777"]   # ook bij nieuw onderzoek weg
+    with pytest.raises(ValueError):
+        trends.verberg("javascript:alert(1)")
