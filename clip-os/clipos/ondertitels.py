@@ -4,6 +4,14 @@ from __future__ import annotations
 
 import re
 
+# Veilige zone op de telefoon (in een 1080x1920-beeld): YouTube legt bovenin (statusbalk, "Shorts", Live/Lens) en onderin
+# (kanaalnaam, titel, knoppen) zijn eigen knoppen over de video. Tekst moet daartussen staan. Aan de zijkanten valt op
+# lange telefoons ook ±100 px weg, daarom ruime marges links/rechts.
+VEILIG_BOVEN = 340
+VEILIG_ONDER = 1330
+NAAD_ONDERTITEL = (540, 1035)  # split-screen: ondertitels net onder de naad
+NAAD_HOOK_Y = 935              # split-screen: hook met zijn onderkant net boven de naad
+
 WIT = "&H00FFFFFF&"
 GEEL = "&H0000E5FF&"
 
@@ -16,9 +24,9 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Onder,Arial,82,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,7,3,2,70,70,520,1
-Style: Hook,Arial,62,&H00000000,&H00000000,&H00FFFFFF,&H00000000,-1,0,0,0,100,100,0,0,3,20,0,8,90,90,300,1
-Style: Pop,Arial,118,&H0000E5FF,&H0000E5FF,&H00000000,&H78000000,-1,0,0,0,100,100,0,0,1,9,5,5,60,60,0,1
+Style: Onder,Arial,82,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,7,3,2,110,110,600,1
+Style: Hook,Arial,62,&H00000000,&H00000000,&H00FFFFFF,&H00000000,-1,0,0,0,100,100,0,0,3,20,0,8,130,130,340,1
+Style: Pop,Arial,118,&H0000E5FF,&H0000E5FF,&H00000000,&H78000000,-1,0,0,0,100,100,0,0,1,9,5,5,110,110,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -77,12 +85,12 @@ POP_DUUR = 1.4
 
 
 def maak_ass(woorden: list[dict], clip_start: float, duur: float, hook: str = "", hook_duur: float = 3.0,
-             hook_y: int = 300, onder_pos: tuple[int, int] | None = None,
+             hook_y: int = VEILIG_BOVEN, onder_pos: tuple[int, int] | None = None, hook_onderkant: bool = False,
              split_intervallen: list[tuple[float, float]] | None = None,
              popups: list[tuple[float, str, int]] | None = None) -> str:
     """woorden: absolute tijden uit het transcript; ze worden omgerekend naar clip-tijd.
 
-    split_intervallen: stukken (clip-tijd) met twee mensen boven elkaar; ondertitels staan dan op de naad (540, 960).
+    split_intervallen: stukken (clip-tijd) met twee mensen boven elkaar; ondertitels staan dan net onder de naad (NAAD_ONDERTITEL).
     popups: [(tijd, tekst, y)] grote tekst die even oppopt bij een sterk getal of woord."""
     rel = [
         {"start": max(0.0, w["start"] - clip_start), "end": min(duur, w["end"] - clip_start), "woord": schoon(w["woord"]).upper()}
@@ -91,7 +99,7 @@ def maak_ass(woorden: list[dict], clip_start: float, duur: float, hook: str = ""
     regels = [KOP]
     if hook:
         regels.append(f"Dialogue: 1,{ass_tijd(0)},{ass_tijd(min(hook_duur, duur))},Hook,,0,0,0,,"
-                      f"{{\\an8\\pos(540,{int(hook_y)})}}{schoon(hook)}\n")
+                      f"{{\\an{2 if hook_onderkant else 8}\\pos(540,{int(hook_y)})}}{schoon(hook)}\n")
 
     for t, tekst, y in popups or []:
         if 0 <= t < duur and schoon(tekst):
@@ -103,7 +111,7 @@ def maak_ass(woorden: list[dict], clip_start: float, duur: float, hook: str = ""
 
     def plek(t: float) -> str:
         if any(a - 0.05 <= t < b for a, b in split_intervallen or []):
-            return "{\\an5\\pos(540,960)}"
+            return f"{{\\an5\\pos({NAAD_ONDERTITEL[0]},{NAAD_ONDERTITEL[1]})}}"
         return vast
 
     groepen = groepeer(rel)

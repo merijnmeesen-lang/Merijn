@@ -8,6 +8,13 @@ from pathlib import Path
 from . import werk
 
 
+# Liefst 1440p: uit een liggende video wordt een staand stuk gesneden en soms ingezoomd. Met meer pixels in de bron
+# hoeft er (bijna) niets opgerekt te worden, dus scherpere video's. AV1 slaan we over: dat is zwaar om te decoderen
+# en niet elke ffmpeg kan het. Is er geen 1440p, dan gewoon de beste tot 1080p.
+FORMAAT = ("bv*[height<=1440][vcodec!^=av01]+ba/b[height<=1440][vcodec!^=av01]"
+           "/bv*[height<=1080]+ba/b[height<=1080]/bv*+ba/b")
+
+
 def haal_binnen(bron: str, job_dir: Path) -> Path:
     doel = job_dir / "bron.mp4"
     lokaal = Path(bron).expanduser()
@@ -19,7 +26,7 @@ def haal_binnen(bron: str, job_dir: Path) -> Path:
 
     opties = werk.ytdlp_opties(
         outtmpl=str(job_dir / "bron.%(ext)s"),
-        format="bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/bv*[height<=1080]+ba/b",
+        format=FORMAAT,
         merge_output_format="mp4",
         ffmpeg_location=werk.ffmpeg(),
         noplaylist=True,

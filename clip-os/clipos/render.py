@@ -6,7 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from . import effecten, reframe, tempo, werk
-from .ondertitels import maak_ass
+from .ondertitels import NAAD_HOOK_Y, NAAD_ONDERTITEL, maak_ass
 from .transcriptie import woorden_in
 
 
@@ -25,7 +25,10 @@ def bepaal_grenzen(clip: dict, transcript: dict, bron_duur: float) -> tuple[floa
     return max(0.0, start), min(bron_duur, end)
 
 
-PRESET = "veryfast"  # ±3x sneller dan "medium"; YouTube codeert de video toch opnieuw
+PRESET = "faster"    # ±2x sneller dan "medium", maar bewaart fijne details (kleding, haar) beter dan "veryfast"
+CRF = "19"           # iets hogere kwaliteit: YouTube comprimeert de video daarna zelf nog een keer
+ZOOM_LICHT = 1.07    # lichte zoom na een knip
+ZOOM_STERK = 1.10    # zoom op de sterkste zin
 POP_NIET_VOOR = 3.2   # geen pop-up tekst zolang de hook in beeld staat
 
 
@@ -39,37 +42,69 @@ def VOL_BEELD(invoer: str, uitvoer: str, p: str = "") -> list[str]:
             f"[{p}bg][{p}fg]overlay=(W-w)/2:(H-h)/2,setsar=1{uitvoer}"]
 
 
-def VOLG_BEELD(invoer: str, uitvoer: str, lagen: list[dict], W: int, H: int) -> list[str]:
-    """Uitsnede (9:16) die per stuk het gezicht volgt."""
+def zoom_uitsnede(b: int, h: int, x: int, y: int, factor: float, W: int, H: int) -> tuple[int, int, int, int]:
+    """Een kleinere uitsnede uit het origineel voor een zoom: zelfde midden, iets meer ruimte onder dan boven
+    (gezichten zitten bovenin). Zo wordt er maar één keer vergroot, in plaats van een al vergroot beeld nog eens."""
+    zb, zh = even(b / factor), even(h / factor)
+    zx = x + (b - zb) // 2
+    zy = y + int((h - zh) * 0.3)
+    return zb, zh, max(0, min(W - zb, zx)), max(0, min(H - zh, zy))
+
+
+def VOLG_BEELD(invoer: str, uitvoer: str, lagen: list[dict], W: int, H: int, factor: float = 1.0) -> list[str]:
+    """Uitsnede (9:16) die per stuk het gezicht volgt; met factor > 1 ingezoomd (rechtstreeks uit het origineel)."""
     crop_w = even(H * 9 / 16)
-    paren, x = [], 0.5
+    paren, x, maat = [], 0.5, None
     for seg in lagen:
         if seg["soort"] == "volg":
             x = seg["x"]
-        paren.append((seg["t"], max(0, min(W - crop_w, int(round(x * W - crop_w / 2))))))
-    return [f"{invoer}crop={crop_w}:{H}:{reframe.stap_expressie(paren)}:0,scale=1080:1920:flags=lanczos,setsar=1{uitvoer}"]
+        basis_x = max(0, min(W - crop_w, int(round(x * W - crop_w / 2))))
+        zb, zh, zx, zy = zoom_uitsnede(crop_w, H, basis_x, 0, factor, W, H)
+        maat = (zb, zh, zy)
+        paren.append((seg["t"], zx))
+    zb, zh, zy = maat
+    return [f"{invoer}crop={zb}:{zh}:{reframe.stap_expressie(paren)}:{zy},scale=1080:1920:flags=lanczos,setsar=1{uitvoer}"]
 
 
-def SPLIT_BEELD(invoer: str, uitvoer: str, lagen: list[dict], W: int, H: int, p: str = "") -> list[str]:
+def SPLIT_BEELD(invoer: str, uitvoer: str, lagen: list[dict], W: int, H: int, p: str = "", factor: float = 1.0) -> list[str]:
     """Twee mensen boven elkaar (elk 1080x960); per breed shot een eigen uitsnede, met dezelfde maat."""
     splits = [seg for seg in lagen if seg["soort"] == "split"]
     ch = max(reframe.split_crop(splits[0][kant], W, H)[1] for kant in ("links", "rechts"))
     paren: dict = {"links": [], "rechts": []}
     vorige: dict = {}
+    maat = None
     for seg in lagen:
         for kant in ("links", "rechts"):
             if seg["soort"] == "split":
                 vorige[kant] = reframe.split_crop(seg[kant], W, H, ch=ch)
-            cb_, ch_, x, y = vorige.get(kant) or reframe.split_crop(splits[0][kant], W, H, ch=ch)
-            paren[kant].append((seg["t"], x, y))
-    cb, ch = vorige["links"][0], vorige["links"][1]
+            cb, ch_, x, y = vorige.get(kant) or reframe.split_crop(splits[0][kant], W, H, ch=ch)
+            zb, zh, zx, zy = zoom_uitsnede(cb, ch_, x, y, factor, W, H)
+            maat = (zb, zh)
+            paren[kant].append((seg["t"], zx, zy))
+    zb, zh = maat
 
     def crop(kant: str) -> str:
         xs = reframe.stap_expressie([(t, x) for t, x, _ in paren[kant]])
         ys = reframe.stap_expressie([(t, y) for t, _, y in paren[kant]])
-        return f"crop={cb}:{ch}:{xs}:{ys},scale=1080:960:flags=lanczos,setsar=1"
+        return f"crop={zb}:{zh}:{xs}:{ys},scale=1080:960:flags=lanczos,setsar=1"
     return [f"{invoer}split=2[{p}s1][{p}s2]", f"[{p}s1]{crop('links')}[{p}boven]", f"[{p}s2]{crop('rechts')}[{p}onder]",
             f"[{p}boven][{p}onder]vstack=inputs=2{uitvoer}"]
+
+
+def samenstelling(ingangen: list[str], uitvoer: str, soorten: list[str], lagen: list[dict], iv: dict,
+                  W: int, H: int, factor: float, p: str) -> list[str]:
+    """Eén compleet 9:16-beeld: de eerste indeling als basis, de andere eroverheen op de momenten dat ze gelden."""
+    maak = {"volg": lambda i, o: VOLG_BEELD(i, o, lagen, W, H, factor),
+            "split": lambda i, o: SPLIT_BEELD(i, o, lagen, W, H, p=f"{p}sp", factor=factor),
+            "vol": lambda i, o: VOL_BEELD(i, o, p=f"{p}vl")}
+    if len(soorten) == 1:
+        return maak[soorten[0]](ingangen[0], uitvoer)
+    graaf = maak[soorten[0]](ingangen[0], f"[{p}lg0]")
+    for i, soort in enumerate(soorten[1:], start=1):
+        graaf += maak[soort](ingangen[i], f"[{p}lb{i}]")
+        uit = uitvoer if i == len(soorten) - 1 else f"[{p}lg{i}]"
+        graaf.append(f"[{p}lg{i - 1}][{p}lb{i}]overlay=0:0:enable={tempo.tijd_expressie(iv[soort])}{uit}")
+    return graaf
 
 
 def lagen_naar_cliptijd(lagen: list[dict], start: float, stukken) -> list[dict]:
@@ -133,26 +168,27 @@ def render_clip(job_dir: Path, clip: dict, modus: str = "auto", montage: dict | 
     vol_iv = reframe.intervallen(lagen, "vol", duur) if lagen else []
     eerste = lagen[0]["soort"] if lagen else "vol"
     if eerste == "split":
-        hook_top = 40
+        hook_top = NAAD_HOOK_Y  # op de naad tussen de twee sprekers (bovenin zitten de knoppen van YouTube)
     elif eerste == "volg":
         hook_top = reframe.hook_y(posities)
     if modus == "split":
-        onder_pos = (540, 960)
+        onder_pos = NAAD_ONDERTITEL
 
     # 3. pop-up tekst bij sterke getallen of woorden (door Claude gekozen, anders automatisch)
     popups = []
     if montage.get("popup_tekst", True):
-        volg_y = min(1180, reframe.hook_y(posities, hook_duur=end - start) + 70) if posities else 1000
+        volg_y = min(1100, reframe.hook_y(posities, hook_duur=end - start) + 70) if posities else 1000
         for pop in effecten.popup_lijst(clip.get("kernwoorden"), woorden, start, end):
             t = tempo.remap(pop["t"], stukken)
             if POP_NIET_VOOR <= t <= duur - 0.6:
                 soort = next((seg["soort"] for seg in reversed(lagen) if seg["t"] <= t), eerste)
-                popups.append((round(t, 3), pop["tekst"], {"split": 150, "vol": 400}.get(soort, volg_y)))
+                popups.append((round(t, 3), pop["tekst"], {"split": 1170, "vol": 470}.get(soort, volg_y)))
 
     # 4. ondertitels en hook (tijden in de ingekorte clip)
     woorden_nieuw = tempo.remap_woorden(woorden, stukken)
     (clip_dir / "subs.ass").write_text(
         maak_ass(woorden_nieuw, 0.0, duur, clip.get("hook", ""), hook_y=hook_top, onder_pos=onder_pos,
+                 hook_onderkant=eerste == "split",
                  split_intervallen=split_iv if modus == "mix" else None, popups=popups), encoding="utf-8")
 
     # 5. filtergraaf: beeld
@@ -164,40 +200,32 @@ def render_clip(job_dir: Path, clip: dict, modus: str = "auto", montage: dict | 
         if a:
             graaf.append(f"[0:a]aselect={sel},asetpts=N/SR/TB[ak]")
             a = "[ak]"
-    if modus == "vol":
-        graaf += VOL_BEELD(v, "[vb]")
-    else:
-        # basisindeling + de andere indelingen eroverheen op de momenten dat ze gelden
-        soorten = [s_ for s_ in ("volg", "split", "vol") if any(seg["soort"] == s_ for seg in lagen)]
-        maak = {"volg": lambda i, o: VOLG_BEELD(i, o, lagen, W, H),
-                "split": lambda i, o: SPLIT_BEELD(i, o, lagen, W, H, p="sp"),
-                "vol": lambda i, o: VOL_BEELD(i, o, p="vl")}
-        iv = {"split": split_iv, "vol": vol_iv}
-        if len(soorten) == 1:
-            graaf += maak[soorten[0]](v, "[vb]")
-        else:
-            graaf.append(f"{v}split={len(soorten)}" + "".join(f"[in{i}]" for i in range(len(soorten))))
-            graaf += maak[soorten[0]]("[in0]", "[lg0]")
-            for i, soort in enumerate(soorten[1:], start=1):
-                graaf += maak[soort](f"[in{i}]", f"[lb{i}]")
-                uit = "[vb]" if i == len(soorten) - 1 else f"[lg{i}]"
-                graaf.append(f"[lg{i - 1}][lb{i}]overlay=0:0:enable={tempo.tijd_expressie(iv[soort])}{uit}")
-    v = "[vb]"
-
-    # 6. zooms (niet bij wazige balken)
     punch, sterk = ([], [])
     if montage["zoom"] and modus != "vol":
         punch, sterk = tempo.zoom_intervallen(stukken, clip.get("nadruk") or [], duur)
         punch = [z for z in punch if not overlapt(z, vol_iv)]
         sterk = [z for z in sterk if not overlapt(z, vol_iv)]
-        for naam, intervallen, factor in (("p", punch, 1.07), ("n", sterk, 1.15)):
-            if not intervallen:
-                continue
-            zb, zh = even(1080 * factor), even(1920 * factor)
-            graaf += [f"{v}split=2[{naam}0][{naam}1]",
-                      f"[{naam}1]scale={zb}:{zh}:flags=bicubic,crop=1080:1920:{(zb - 1080) // 2}:{int((zh - 1920) * 0.3)}[{naam}z]",
-                      f"[{naam}0][{naam}z]overlay=0:0:enable={tempo.tijd_expressie(intervallen)}[{naam}v]"]
-            v = f"[{naam}v]"
+    if modus == "vol":
+        graaf += VOL_BEELD(v, "[vb]")
+    else:
+        # basisbeeld + per zoomniveau een ingezoomde versie, elk rechtstreeks uit het origineel gesneden
+        soorten = [s_ for s_ in ("volg", "split", "vol") if any(seg["soort"] == s_ for seg in lagen)]
+        zoom_soorten = [s_ for s_ in soorten if s_ != "vol"]
+        zooms = [(naam, factor, iv_) for naam, factor, iv_ in (("p", ZOOM_LICHT, punch), ("n", ZOOM_STERK, sterk)) if iv_]
+        iv = {"split": split_iv, "vol": vol_iv}
+        aantal = len(soorten) + len(zooms) * len(zoom_soorten)
+        ingangen = [f"[in{i}]" for i in range(aantal)] if aantal > 1 else [v]
+        if aantal > 1:
+            graaf.append(f"{v}split={aantal}" + "".join(ingangen))
+        uit = "[vb]" if not zooms else "[vz0]"
+        graaf += samenstelling(ingangen[:len(soorten)], uit, soorten, lagen, iv, W, H, 1.0, "b")
+        rest = ingangen[len(soorten):]
+        for k, (naam, factor, intervallen) in enumerate(zooms):
+            graaf += samenstelling(rest[:len(zoom_soorten)], f"[{naam}z]", zoom_soorten, lagen, iv, W, H, factor, naam)
+            rest = rest[len(zoom_soorten):]
+            volgende = "[vb]" if k == len(zooms) - 1 else f"[vz{k + 1}]"
+            graaf.append(f"[vz{k}][{naam}z]overlay=0:0:enable={tempo.tijd_expressie(intervallen)}{volgende}")
+    v = "[vb]"
     graaf.append(f"{v}ass=subs.ass[vuit]")
 
     # 7. geluid: geluidseffecten onder de spraak, daarna op YouTube-volume
@@ -217,7 +245,7 @@ def render_clip(job_dir: Path, clip: dict, modus: str = "auto", montage: dict | 
            "-ss", f"{start:.3f}", "-t", f"{end - start:.3f}", "-i", str(bron),
            *[x for pad in extra_inputs for x in ("-i", str(pad))],
            "-filter_complex", ";".join(graaf), "-map", "[vuit]", *(["-map", "[auit]"] if a else []),
-           "-c:v", "libx264", "-preset", PRESET, "-crf", "20", "-pix_fmt", "yuv420p",
+           "-c:v", "libx264", "-preset", PRESET, "-crf", CRF, "-tune", "film", "-pix_fmt", "yuv420p",
            *(["-c:a", "aac", "-b:a", "160k", "-ar", "48000"] if a else []),
            "-movflags", "+faststart", "video.mp4"]
     werk.draai(cmd, cwd=clip_dir)

@@ -84,7 +84,7 @@ def test_ass_met_popup_en_ondertitels_op_de_naad_tijdens_split():
     ass = maak_ass([w(1, "eerste"), w(5, "tweede")], 0, 8, popups=[(4.0, "$3 billion", 150)], split_intervallen=[(4.5, 8.0)])
     assert "Pop,,0,0,0,,{\\an5\\pos(540,150)" in ass and "$3 BILLION" in ass
     regels = [r for r in ass.splitlines() if ",Onder," in r]
-    assert "\\pos(540,960)" not in regels[0] and "\\pos(540,960)" in regels[-1]
+    assert "\\pos(540,1035)" not in regels[0] and "\\pos(540,1035)" in regels[-1]
 
 
 # ---------- geluidseffecten ----------
@@ -186,3 +186,47 @@ def test_marktonderzoek_zoekt_alles_tegelijk(monkeypatch):
     t = time.time()
     uit = trends.zoek_meerdere(["geld", "ai", "beleggen"], maximum=3, kanalen=["https://www.youtube.com/@x"])
     assert len(uit) == 12 and time.time() - t < 2.5            # één voor één zou ±6,4 s duren
+
+
+def test_tekst_blijft_uit_de_knoppen_van_youtube():
+    """Bovenin (statusbalk, 'Shorts', Live/Lens) en onderin (kanaalnaam, titel) legt YouTube knoppen over de video."""
+    from clipos import ondertitels as o
+    assert reframe.hook_y([(0.0, None, None)]) >= o.VEILIG_BOVEN
+    assert reframe.hook_y([(0.0, 0.5, 0.05)]) >= o.VEILIG_BOVEN          # gezicht heel hoog in beeld
+    onder_marge = int(o.KOP.split("Style: Onder,")[1].split("\n")[0].split(",")[-2])
+    assert 1920 - onder_marge <= o.VEILIG_ONDER                          # onderkant van de ondertitels
+    assert o.NAAD_HOOK_Y > o.VEILIG_BOVEN and o.NAAD_ONDERTITEL[1] < o.VEILIG_ONDER
+    ass = maak_ass([w(1, "hoi")], 0, 5, hook="Hook", hook_y=o.NAAD_HOOK_Y, hook_onderkant=True)
+    assert "{\\an2\\pos(540,935)}Hook" in ass
+
+
+# ---------- scherpte ----------
+
+def test_zoom_snijdt_uit_het_origineel_binnen_beeld():
+    from clipos import render
+    for x in (0, 657, 1314):                                   # links, midden, rechts in een 1920x1080-bron
+        zb, zh, zx, zy = render.zoom_uitsnede(606, 1080, x, 0, 1.10, 1920, 1080)
+        assert (zb, zh) == (550, 982) and 0 <= zx and zx + zb <= 1920 and 0 <= zy and zy + zh <= 1080
+    assert render.zoom_uitsnede(606, 1080, 657, 0, 1.0, 1920, 1080) == (606, 1080, 657, 0)
+
+
+def test_download_kiest_1440p_maar_geen_av1():
+    import yt_dlp
+
+    from clipos import bron
+
+    def fmt(i, ext, v, a, h=None, tbr=1):
+        d = {"format_id": i, "ext": ext, "vcodec": v, "acodec": a, "tbr": tbr, "url": "https://x/" + i, "protocol": "https"}
+        return {**d, "height": h, "width": h * 16 // 9} if h else d
+    ydl = yt_dlp.YoutubeDL({"quiet": True})
+    for formats, verwacht in (
+        ([fmt("137", "mp4", "avc1.640028", "none", 1080, 4000), fmt("271", "webm", "vp9", "none", 1440, 9000),
+          fmt("400", "mp4", "av01.0.12M.08", "none", 1440, 7000), fmt("401", "mp4", "av01.0.13M.08", "none", 2160, 15000),
+          fmt("140", "m4a", "none", "mp4a.40.2", None, 128)], "271+140"),
+        ([fmt("137", "mp4", "avc1.640028", "none", 1080, 4000), fmt("248", "webm", "vp9", "none", 1080, 3000),
+          fmt("140", "m4a", "none", "mp4a.40.2", None, 128)], "248+140"),
+    ):
+        info = {"formats": formats}
+        ydl.sort_formats(info)
+        gekozen = list(ydl.build_format_selector(bron.FORMAAT)({"formats": info["formats"], "has_merged_format": True}))
+        assert gekozen[0]["format_id"] == verwacht

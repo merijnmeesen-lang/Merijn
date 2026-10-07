@@ -20,7 +20,7 @@ def test_groepeer_breekt_op_zinseinde_en_max_woorden():
 
 def test_maak_ass_markeert_huidig_woord_en_hook():
     ass = maak_ass([w(10.0, "Hallo"), w(10.4, "wereld")], clip_start=10.0, duur=5.0, hook="Kijk dit")
-    assert "Hook,,0,0,0,,{\\an8\\pos(540,300)}Kijk dit" in ass
+    assert "Hook,,0,0,0,,{\\an8\\pos(540,340)}Kijk dit" in ass
     assert "{\\c&H0000E5FF&}HALLO{\\c&H00FFFFFF&} WERELD" in ass
     assert "HALLO {\\c&H0000E5FF&}WERELD" in ass
 

@@ -333,8 +333,8 @@ def geen_gezicht_intervallen(segmenten, duur: float) -> list[tuple[float, float]
     return uit
 
 
-HOOK_STANDAARD_Y = 300   # bovenkant van de hook (in een 1080x1920-beeld) als er geen gezicht bekend is
-HOOK_MAX_Y = 1150        # lager niet: daar beginnen de ondertitels
+HOOK_STANDAARD_Y = 340   # bovenkant van de hook (1080x1920) zonder bekend gezicht: net onder de knoppen van YouTube
+HOOK_MAX_Y = 1030        # lager niet: daar beginnen de ondertitels (die eindigen boven de knoppen onderin)
 
 
 def hook_y(posities, hook_duur: float = 3.0, hoogte: int = 1920) -> int:
